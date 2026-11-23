@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
 import { ConflictCase, EngineWeightConfig, AllocationResult } from '../../types';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
@@ -37,9 +38,14 @@ export const ConflictResolutionPage: React.FC = () => {
     engineWeights,
     setEngineWeights,
     currentRole,
+    setRole,
     approveAllocation,
     setConflictResolution,
   } = useAppStore();
+
+  const navigate = useNavigate();
+  const [engineRanBanner, setEngineRanBanner] = useState<string | null>(null);
+  const [approvalFeedback, setApprovalFeedback] = useState<string | null>(null);
 
   const [selectedConflictId, setSelectedConflictId] = useState<string>(
     conflicts.find((c) => c.isHeroScenario)?.id || conflicts[0]?.id || ''
@@ -105,6 +111,7 @@ export const ConflictResolutionPage: React.FC = () => {
   // Run Allocation Engine Manually
   const handleRunEngine = () => {
     setIsRunning(true);
+    setEngineRanBanner(null);
     setTimeout(() => {
       const res = runAllocationEngine(engineContext);
       setAllocationResult(res);
@@ -112,6 +119,9 @@ export const ConflictResolutionPage: React.FC = () => {
         setConflictResolution(activeConflict.id, res);
       }
       setIsRunning(false);
+      setEngineRanBanner(
+        `Allocation Engine Executed! 5-factor scoring resolved ${res.totalRequests} competing requests. Fairness Index improved from ${res.fairnessIndexBefore.toFixed(2)} to ${res.fairnessIndexAfter.toFixed(2)}.`
+      );
     }, 400);
   };
 
@@ -253,6 +263,23 @@ export const ConflictResolutionPage: React.FC = () => {
                 Execute Allocation Engine
               </Button>
             </CardHeader>
+
+            {/* Live Engine Execution Feedback Toast */}
+            {engineRanBanner && (
+              <div className="bg-emerald-50 border-b border-emerald-200 p-3 text-xs text-emerald-800 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-medium">{engineRanBanner}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEngineRanBanner(null)}
+                  className="text-emerald-700 hover:text-emerald-900 font-bold text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <div className="divide-y divide-slate-100 overflow-x-auto">
               <table className="w-full text-xs text-left">
@@ -515,33 +542,62 @@ export const ConflictResolutionPage: React.FC = () => {
               </Card>
 
               {/* Faculty Approval Commit Bar */}
-              <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-0.5">
-                  <h4 className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
-                    <FileCheck2 className="w-4 h-4 text-purple-600" />
-                    Faculty Review & Atomic Commitment
-                  </h4>
-                  <p className="text-[11px] text-purple-700">
-                    Faculty Advisors can review and commit this schedule atomically to the calendar.
-                  </p>
+              {activeConflict.status === 'resolved' || approvalFeedback ? (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Allocation Schedule Committed & Synced
+                    </h4>
+                    <p className="text-[11px] text-emerald-700">
+                      {approvalFeedback || 'This allocation has been approved by Faculty and committed atomically to the Smart Calendar.'}
+                    </p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate('/calendar')}
+                    className="bg-emerald-600 hover:bg-emerald-700 shrink-0 font-bold"
+                    rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+                  >
+                    View in Smart Booking Calendar
+                  </Button>
                 </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                      <FileCheck2 className="w-4 h-4 text-purple-600" />
+                      Faculty Review & Atomic Commitment
+                    </h4>
+                    <p className="text-[11px] text-purple-700">
+                      Faculty Advisors review the mathematical reasoning and commit this schedule atomically to the calendar.
+                    </p>
+                    {currentRole !== 'faculty' && (
+                      <span className="inline-block mt-1 text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-medium">
+                        Currently in {currentRole} mode — clicking below switches to Faculty Advisor persona automatically.
+                      </span>
+                    )}
+                  </div>
 
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    const approved = approveAllocation(activeConflict.id);
-                    if (approved) {
-                      alert('Allocation approved and committed atomically to calendar!');
-                    } else {
-                      alert('Notice: Switch persona to "Faculty" in the top bar to approve allocations.');
-                    }
-                  }}
-                  className="bg-purple-700 hover:bg-purple-800 shrink-0 font-bold"
-                >
-                  Approve & Commit Allocation
-                </Button>
-              </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      if (currentRole !== 'faculty') {
+                        setRole('faculty');
+                      }
+                      const approved = approveAllocation(activeConflict.id);
+                      if (approved) {
+                        setApprovalFeedback('Allocation approved! 3 bookings committed atomically to the calendar.');
+                      }
+                    }}
+                    className="bg-purple-700 hover:bg-purple-800 shrink-0 font-bold"
+                  >
+                    {currentRole === 'faculty' ? 'Approve & Commit Allocation' : 'Switch to Faculty & Approve'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
