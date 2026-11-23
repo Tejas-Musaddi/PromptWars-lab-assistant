@@ -54,17 +54,17 @@ export function buildExplanation(
       break;
 
     case 'alternative_equipment':
-      plainEnglish = `Shifted to equivalent hardware (${assignment.equipmentId}) at requested time. Total score: ${breakdown.totalScore.toFixed(1)}/100.`;
-      whyAlternative = `Primary unit was allocated to a higher-scoring contention with closer deadline or higher priority. Equivalent hardware maintains your scheduled timeline without delay.`;
+      plainEnglish = assignment.reason || `Shifted to equivalent hardware (${assignment.equipmentId}) at requested time. Total score: ${breakdown.totalScore.toFixed(1)}/100.`;
+      whyAlternative = `Primary unit was allocated to a higher-scoring contention with closer deadline or higher priority. Equivalent hardware satisfies all technical specifications without schedule disruption.`;
       break;
 
     case 'alternative_slot':
-      plainEnglish = `Shifted to next collision-free window. Total score: ${breakdown.totalScore.toFixed(1)}/100. Urgency: ${breakdown.deadlineUrgency}/100.`;
+      plainEnglish = assignment.reason || `Shifted to next collision-free window. Total score: ${breakdown.totalScore.toFixed(1)}/100. Urgency: ${breakdown.deadlineUrgency}/100.`;
       whyAlternative = `The requested window had an overlap with a contending request having higher deadline urgency or priority. Moving by the offset keeps the booking within project submission limits.`;
       break;
 
     case 'waitlisted':
-      plainEnglish = `Placed in waitlist queue with priority score ${breakdown.totalScore.toFixed(1)}/100.`;
+      plainEnglish = assignment.reason || `Placed in waitlist queue with priority score ${breakdown.totalScore.toFixed(1)}/100.`;
       whyAlternative = `All immediate slots and equivalent apparatus were booked. If any session cancels, your position will be automatically promoted.`;
       break;
   }

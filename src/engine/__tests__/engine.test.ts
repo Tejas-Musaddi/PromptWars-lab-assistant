@@ -377,3 +377,59 @@ describe('Allocation Engine — What-If Simulator', () => {
     expect(sim.changes).toHaveLength(3);
   });
 });
+
+describe('Allocation Engine — Enhanced Requirements & Robustness', () => {
+  const seed = getInitialSeedData();
+  const eq = seed.equipment.find((e) => e.id === 'eq-gpu---ai-workstations-001')!;
+  const lab = seed.laboratories.find((l) => l.id === eq.labId)!;
+  const user = seed.users.find((u) => u.id === 'student-1')!;
+
+  it('validates operating hours uniformly across UTC and local time formats', () => {
+    const proj = seed.projects[0];
+    const utcReq: BookingRequest = {
+      id: 'req-tz-utc',
+      projectId: proj.id,
+      userId: user.id,
+      equipmentId: eq.id,
+      startTime: '2026-11-25T14:00:00Z',
+      endTime: '2026-11-25T17:00:00Z',
+      purpose: 'UTC ISO format test',
+      createdAt: '2026-11-23T08:00:00Z',
+      status: 'pending_approval',
+    };
+    const resUtc = checkHardConstraints(utcReq, eq, lab, user, proj, [], []);
+    expect(resUtc.isFeasible).toBe(true);
+
+    const localReq: BookingRequest = {
+      id: 'req-tz-local',
+      projectId: proj.id,
+      userId: user.id,
+      equipmentId: eq.id,
+      startTime: '2026-11-25T14:00:00',
+      endTime: '2026-11-25T17:00:00',
+      purpose: 'Local ISO format test',
+      createdAt: '2026-11-23T08:00:00',
+      status: 'pending_approval',
+    };
+    const resLocal = checkHardConstraints(localReq, eq, lab, user, proj, [], []);
+    expect(resLocal.isFeasible).toBe(true);
+  });
+
+  it('calculates perfect 1.0 fairness index when all users start with 0 prior hours', () => {
+    const index = calculateJainsFairnessIndex([0, 0, 0, 0]);
+    expect(index).toBe(1.0);
+  });
+
+  it('rewards technical specifications match with high requirement criticality score', () => {
+    const testEq: Equipment = {
+      ...eq,
+      specs: { 'VRAM Required': '>= 24GB', 'Compute Arch': 'NVIDIA Ampere' },
+    };
+    const testProj: Project = {
+      ...seed.projects[0],
+      attachedRequirements: ['Requires >= 24GB VRAM for tensor parallelism'],
+    };
+    const score = calculateRequirementCriticality(testEq, testProj);
+    expect(score).toBeGreaterThanOrEqual(90);
+  });
+});

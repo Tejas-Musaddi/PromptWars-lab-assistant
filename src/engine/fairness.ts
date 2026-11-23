@@ -7,12 +7,13 @@ export function calculateJainsFairnessIndex(values: number[]): number {
   if (!values || values.length === 0) return 1.0;
   if (values.length === 1) return 1.0;
 
-  // Add small epsilon to avoid divide-by-zero if all values are 0
-  const adjusted = values.map((v) => Math.max(0.01, v));
-  const sum = adjusted.reduce((acc, curr) => acc + curr, 0);
-  const sumSq = adjusted.reduce((acc, curr) => acc + curr * curr, 0);
+  const sum = values.reduce((acc, curr) => acc + Math.max(0, curr), 0);
+  if (sum === 0) return 1.0; // Equal distribution across population with zero prior allocations
 
-  const n = adjusted.length;
+  const sumSq = values.reduce((acc, curr) => acc + Math.max(0, curr) * Math.max(0, curr), 0);
+  const n = values.length;
+  if (sumSq === 0) return 1.0;
+
   const index = (sum * sum) / (n * sumSq);
   return Math.min(1.0, Math.max(0.0, Math.round(index * 100) / 100));
 }

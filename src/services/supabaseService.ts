@@ -563,130 +563,177 @@ export const SupabaseService = {
   },
 
   // ============================================================================
-  // SINGLE-ENTITY MUTATION SYNC METHODS (Background / Non-blocking)
+  // SINGLE-ENTITY MUTATION SYNC METHODS (With Error Propagation)
   // ============================================================================
 
-  async syncProject(project: Project, action: 'insert' | 'update' | 'delete' = 'update') {
-    if (!this.isAvailable() || !supabase) return;
+  async syncProject(project: Project, action: 'insert' | 'update' | 'delete' = 'update'): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
       if (action === 'delete') {
-        await supabase.from('projects').delete().eq('id', project.id);
+        const { error } = await supabase.from('projects').delete().eq('id', project.id);
+        if (error) throw new Error(error.message);
       } else {
-        await supabase.from('projects').upsert(mapProjectToRow(project));
+        const { error } = await supabase.from('projects').upsert(mapProjectToRow(project));
+        if (error) throw new Error(error.message);
       }
-    } catch (err) {
-      console.warn('Failed to sync project to Supabase:', err);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync project to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncEquipment(equipment: Equipment, action: 'insert' | 'update' | 'delete' = 'update') {
-    if (!this.isAvailable() || !supabase) return;
+  async syncEquipment(equipment: Equipment, action: 'insert' | 'update' | 'delete' = 'update'): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
       if (action === 'delete') {
-        await supabase.from('equipment').delete().eq('id', equipment.id);
+        const { error } = await supabase.from('equipment').delete().eq('id', equipment.id);
+        if (error) throw new Error(error.message);
       } else {
-        await supabase.from('equipment').upsert(mapEquipmentToRow(equipment));
+        const { error } = await supabase.from('equipment').upsert(mapEquipmentToRow(equipment));
+        if (error) throw new Error(error.message);
       }
-    } catch (err) {
-      console.warn('Failed to sync equipment to Supabase:', err);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync equipment to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncBooking(booking: Booking, action: 'insert' | 'update' | 'delete' = 'update') {
-    if (!this.isAvailable() || !supabase) return;
+  async syncBooking(booking: Booking, action: 'insert' | 'update' | 'delete' = 'update'): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
       if (action === 'delete') {
-        await supabase.from('bookings').delete().eq('id', booking.id);
+        const { error } = await supabase.from('bookings').delete().eq('id', booking.id);
+        if (error) throw new Error(error.message);
       } else {
-        await supabase.from('bookings').upsert(mapBookingToRow(booking));
+        const { error } = await supabase.from('bookings').upsert(mapBookingToRow(booking));
+        if (error) throw new Error(error.message);
       }
-    } catch (err) {
-      console.warn('Failed to sync booking to Supabase:', err);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync booking to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncBookingRequest(req: BookingRequest) {
-    if (!this.isAvailable() || !supabase) return;
+  async syncBookingRequest(req: BookingRequest): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
-      await supabase.from('booking_requests').upsert(mapBookingRequestToRow(req));
-    } catch (err) {
-      console.warn('Failed to sync booking request to Supabase:', err);
+      const { error } = await supabase.from('booking_requests').upsert(mapBookingRequestToRow(req));
+      if (error) throw new Error(error.message);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync booking request to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncConflict(conflict: ConflictCase) {
-    if (!this.isAvailable() || !supabase) return;
+  async syncConflict(conflict: ConflictCase): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
-      await supabase.from('conflicts').upsert(mapConflictToRow(conflict));
-    } catch (err) {
-      console.warn('Failed to sync conflict to Supabase:', err);
+      const { error } = await supabase.from('conflicts').upsert(mapConflictToRow(conflict));
+      if (error) throw new Error(error.message);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync conflict to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncMaintenanceRecord(m: MaintenanceRecord) {
-    if (!this.isAvailable() || !supabase) return;
+  async syncMaintenanceRecord(m: MaintenanceRecord): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
-      await supabase.from('maintenance_records').upsert(mapMaintenanceToRow(m));
-    } catch (err) {
-      console.warn('Failed to sync maintenance record to Supabase:', err);
+      const { error } = await supabase.from('maintenance_records').upsert(mapMaintenanceToRow(m));
+      if (error) throw new Error(error.message);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync maintenance record to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncNotification(n: Notification) {
-    if (!this.isAvailable() || !supabase) return;
+  async syncNotification(n: Notification): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
-      await supabase.from('notifications').upsert(mapNotificationToRow(n));
-    } catch (err) {
-      console.warn('Failed to sync notification to Supabase:', err);
+      const { error } = await supabase.from('notifications').upsert(mapNotificationToRow(n));
+      if (error) throw new Error(error.message);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync notification to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncAuditLog(a: AuditLogEntry) {
-    if (!this.isAvailable() || !supabase) return;
+  async syncAuditLog(a: AuditLogEntry): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
-      await supabase.from('audit_logs').upsert(mapAuditLogToRow(a));
-    } catch (err) {
-      console.warn('Failed to sync audit log to Supabase:', err);
+      const { error } = await supabase.from('audit_logs').insert(mapAuditLogToRow(a));
+      if (error) throw new Error(error.message);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync audit log to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
-  async syncEngineWeights(w: EngineWeightConfig) {
-    if (!this.isAvailable() || !supabase) return;
+  async syncEngineWeights(w: EngineWeightConfig): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable() || !supabase) return { success: true };
     try {
-      await supabase.from('engine_weights').upsert(mapEngineWeightsToRow(w));
-    } catch (err) {
-      console.warn('Failed to sync engine weights to Supabase:', err);
+      const { error } = await supabase.from('engine_weights').upsert([mapEngineWeightsToRow(w)]);
+      if (error) throw new Error(error.message);
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Failed to sync engine weights to Supabase:', msg);
+      return { success: false, error: msg };
     }
   },
 
   // ============================================================================
-  // DATABASE CONSISTENCY & TRANSACTIONAL VALIDATION GUARDS (Section 4)
+  // DATABASE CONSISTENCY & TRANSACTIONAL VALIDATION GUARDS (Fail-Closed)
   // ============================================================================
 
   /**
    * Check real-time slot availability directly against Supabase records.
-   * Ensures no overlapping confirmed bookings, maintenance windows, or out-of-service conditions.
+   * Fails closed: if the query errors, rejects rather than allowing invalid bookings.
    */
   async checkSlotAvailability(
     equipmentId: string,
     startTime: string,
     endTime: string,
     excludeBookingId?: string
-  ): Promise<{ available: boolean; reason?: string }> {
+  ): Promise<{ available: boolean; reason?: string; isOffline?: boolean }> {
     if (!this.isAvailable() || !supabase) {
-      return { available: true }; // Fallback to store logic
+      return { available: true, isOffline: true };
     }
 
     try {
       const reqStart = new Date(startTime).getTime();
       const reqEnd = new Date(endTime).getTime();
 
-      // 1. Check equipment condition
-      const { data: eqData } = await supabase
+      if (isNaN(reqStart) || isNaN(reqEnd) || reqEnd <= reqStart) {
+        return { available: false, reason: 'Invalid slot interval: end time must be after start time.' };
+      }
+
+      // 1. Check equipment condition in Supabase
+      const { data: eqData, error: eqErr } = await supabase
         .from('equipment')
         .select('condition, availability, name, code')
         .eq('id', equipmentId)
         .single();
+
+      if (eqErr) {
+        return { available: false, reason: `Database check failed: unable to verify equipment status (${eqErr.message}).` };
+      }
 
       if (eqData) {
         if (eqData.condition === 'maintenance_required' || eqData.condition === 'out_of_service') {
@@ -698,11 +745,15 @@ export const SupabaseService = {
       }
 
       // 2. Check overlapping confirmed bookings in Supabase
-      const { data: bookingsData } = await supabase
+      const { data: bookingsData, error: bErr } = await supabase
         .from('bookings')
         .select('id, start_time, end_time, status')
         .eq('equipment_id', equipmentId)
         .eq('status', 'confirmed');
+
+      if (bErr) {
+        return { available: false, reason: `Database check failed: unable to verify existing bookings (${bErr.message}).` };
+      }
 
       if (bookingsData && bookingsData.length > 0) {
         for (const b of bookingsData) {
@@ -719,11 +770,15 @@ export const SupabaseService = {
       }
 
       // 3. Check overlapping maintenance in Supabase
-      const { data: maintData } = await supabase
+      const { data: maintData, error: mErr } = await supabase
         .from('maintenance_records')
         .select('id, scheduled_start, scheduled_end, status, title')
         .eq('equipment_id', equipmentId)
         .neq('status', 'completed');
+
+      if (mErr) {
+        return { available: false, reason: `Database check failed: unable to verify maintenance records (${mErr.message}).` };
+      }
 
       if (maintData && maintData.length > 0) {
         for (const m of maintData) {
@@ -739,26 +794,147 @@ export const SupabaseService = {
       }
 
       return { available: true };
-    } catch (err) {
-      console.warn('checkSlotAvailability network check warning:', err);
-      return { available: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('checkSlotAvailability failed (closed check):', msg);
+      return { available: false, reason: `Network or database error during availability check: ${msg}` };
+    }
+  },
+
+  /**
+   * Atomic booking reservation using PostgreSQL RPC or validated transaction.
+   */
+  async createBookingAtomic(params: {
+    requestId?: string;
+    projectId: string;
+    userId: string;
+    equipmentId: string;
+    labId: string;
+    startTime: string;
+    endTime: string;
+    notes?: string;
+  }): Promise<{ success: boolean; bookingId?: string; error?: string }> {
+    if (!this.isAvailable() || !supabase) {
+      return { success: true };
+    }
+
+    try {
+      // 1. Attempt PostgreSQL stored procedure RPC
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('create_booking_atomic', {
+        p_request_id: params.requestId || null,
+        p_project_id: params.projectId,
+        p_user_id: params.userId,
+        p_equipment_id: params.equipmentId,
+        p_lab_id: params.labId,
+        p_start_time: params.startTime,
+        p_end_time: params.endTime,
+        p_notes: params.notes || null,
+      });
+
+      if (!rpcErr && rpcData) {
+        if (!rpcData.success) {
+          return { success: false, error: rpcData.error };
+        }
+        return { success: true, bookingId: rpcData.bookingId };
+      }
+
+      // 2. Fallback to client-side checked persistence if RPC is not present
+      const check = await this.checkSlotAvailability(params.equipmentId, params.startTime, params.endTime);
+      if (!check.available) {
+        return { success: false, error: check.reason };
+      }
+
+      const newId = params.requestId || `book-${Date.now()}`;
+      const { error: insErr } = await supabase.from('bookings').insert({
+        id: newId,
+        request_id: params.requestId || newId,
+        project_id: params.projectId,
+        user_id: params.userId,
+        equipment_id: params.equipmentId,
+        lab_id: params.labId,
+        start_time: params.startTime,
+        end_time: params.endTime,
+        status: 'confirmed',
+        notes: params.notes || null,
+        created_at: new Date().toISOString(),
+      });
+
+      if (insErr) {
+        return { success: false, error: insErr.message };
+      }
+
+      if (params.requestId) {
+        await supabase.from('booking_requests').update({ status: 'approved' }).eq('id', params.requestId);
+      }
+
+      return { success: true, bookingId: newId };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
     }
   },
 
   /**
    * Atomic commit for Faculty Allocations after server-side rechecking.
+   * Resolves actual request and equipment context to avoid hardcoded IDs.
    */
   async revalidateAndCommitAllocation(
     conflictId: string,
     schedule: AllocationResult['feasibleSchedule'],
-    comment?: string
+    comment?: string,
+    context?: {
+      getRequest?: (id: string) => BookingRequest | undefined;
+      getEquipment?: (id: string) => Equipment | undefined;
+    }
   ): Promise<{ success: boolean; bookings?: Booking[]; error?: string }> {
     if (!this.isAvailable() || !supabase) {
       return { success: true };
     }
 
     try {
-      // Re-validate each schedule slot against Supabase before committing
+      // 1. Attempt RPC commit_allocation_atomic
+      const schedulePayload = schedule.map((slot) => {
+        const req = context?.getRequest?.(slot.requestId);
+        const eq = context?.getEquipment?.(slot.equipmentId);
+        return {
+          requestId: slot.requestId,
+          equipmentId: slot.equipmentId,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          projectId: req?.projectId || 'proj-1',
+          userId: req?.userId || 'student-1',
+          labId: eq?.labId || 'lab-cs-1',
+        };
+      });
+
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('commit_allocation_atomic', {
+        p_conflict_id: conflictId,
+        p_schedule: schedulePayload,
+        p_comment: comment || 'Faculty Fair Allocation Approval',
+      });
+
+      if (!rpcErr && rpcData && rpcData.success) {
+        const confirmedBookings: Booking[] = schedule.map((slot, idx) => {
+          const req = context?.getRequest?.(slot.requestId);
+          const eq = context?.getEquipment?.(slot.equipmentId);
+          return {
+            id: `book-alloc-${Date.now()}-${idx}`,
+            requestId: slot.requestId,
+            projectId: req?.projectId || 'proj-1',
+            userId: req?.userId || 'student-1',
+            equipmentId: slot.equipmentId,
+            labId: eq?.labId || 'lab-cs-1',
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            status: 'confirmed',
+            notes: `Committed via Faculty Approval (${comment || 'Fair Allocation Approved'})`,
+            createdAt: new Date().toISOString(),
+          };
+        });
+        return { success: true, bookings: confirmedBookings };
+      }
+
+      // 2. Fallback transaction validation
       for (const slot of schedule) {
         const check = await this.checkSlotAvailability(slot.equipmentId, slot.startTime, slot.endTime);
         if (!check.available) {
@@ -769,27 +945,29 @@ export const SupabaseService = {
         }
       }
 
-      // Generate confirmed bookings
-      const newBookings: Booking[] = schedule.map((slot: AllocationResult['feasibleSchedule'][number], idx: number) => ({
-        id: `book-alloc-${Date.now()}-${idx}`,
-        requestId: slot.requestId,
-        projectId: 'proj-1',
-        userId: 'student-1',
-        equipmentId: slot.equipmentId,
-        labId: 'lab-cs-1',
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        status: 'confirmed',
-        notes: `Committed via Faculty Approval (${comment || 'Fair Allocation Approved'})`,
-        createdAt: new Date().toISOString(),
-      }));
+      // Generate confirmed bookings using dynamic context
+      const newBookings: Booking[] = schedule.map((slot, idx) => {
+        const req = context?.getRequest?.(slot.requestId);
+        const eq = context?.getEquipment?.(slot.equipmentId);
+        return {
+          id: `book-alloc-${Date.now()}-${idx}`,
+          requestId: slot.requestId,
+          projectId: req?.projectId || 'proj-1',
+          userId: req?.userId || 'student-1',
+          equipmentId: slot.equipmentId,
+          labId: eq?.labId || 'lab-cs-1',
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          status: 'confirmed',
+          notes: `Committed via Faculty Approval (${comment || 'Fair Allocation Approved'})`,
+          createdAt: new Date().toISOString(),
+        };
+      });
 
-      // Commit to Supabase bookings
       const bookingRows = newBookings.map(mapBookingToRow);
       const { error: bErr } = await supabase.from('bookings').upsert(bookingRows);
       if (bErr) throw new Error(bErr.message);
 
-      // Update conflict status to resolved
       const { error: cErr } = await supabase
         .from('conflicts')
         .update({ status: 'resolved' })
@@ -800,6 +978,32 @@ export const SupabaseService = {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, error: msg };
+    }
+  },
+
+  /**
+   * Cleanly reset demo state in Supabase without leaving unwanted orphaned records.
+   */
+  async resetDemoStateSupabase(seedData: InitialDataState): Promise<{ success: boolean; message: string }> {
+    if (!this.isAvailable() || !supabase) {
+      return { success: true, message: 'Offline mode reset.' };
+    }
+
+    try {
+      // 1. Try atomic procedure
+      const { error: rpcErr } = await supabase.rpc('reset_demo_state');
+      if (!rpcErr) {
+        await this.seedSupabase(seedData);
+        return { success: true, message: 'Supabase demo state reset via procedure.' };
+      }
+
+      // 2. Fallback: clean up transient records and re-seed
+      await supabase.from('bookings').delete().neq('id', 'keep_all_guard');
+      await supabase.from('booking_requests').delete().neq('id', 'keep_all_guard');
+      return await this.seedSupabase(seedData);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, message: msg };
     }
   },
 };

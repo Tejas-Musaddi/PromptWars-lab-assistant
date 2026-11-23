@@ -116,7 +116,7 @@ export const SmartBookingCalendarPage: React.FC = () => {
     const defaultEq =
       selectedEqId !== 'ALL'
         ? equipmentMap[selectedEqId]
-        : equipment.find((e) => e.id === 'eq-gpu---ai-workstations-001') || equipment[0];
+        : equipment[0];
 
     setPreselectedEquipment(defaultEq || null);
     setPreselectedStart(selectInfo.startStr);
@@ -388,6 +388,8 @@ export const SmartBookingCalendarPage: React.FC = () => {
         equipment={preselectedEquipment}
         isOpen={bookingModalOpen}
         onClose={() => setBookingModalOpen(false)}
+        initialStartTime={preselectedStart}
+        initialEndTime={preselectedEnd}
       />
     </div>
   );

@@ -87,6 +87,8 @@ export const AiAssistantPage: React.FC = () => {
         content: result.replyText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         toolCalled: result.toolCalled,
+        provider: result.provider || 'Deterministic Semantic Engine',
+        isRealLlm: result.isRealLlm || false,
         dataCards: result.dataCards,
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -143,13 +145,21 @@ export const AiAssistantPage: React.FC = () => {
                     : 'bg-slate-50 text-navy-900 border border-slate-200/80 shadow-2xs'
                 }`}
               >
-                {/* Tool Call Pill */}
-                {msg.toolCalled && (
-                  <div className="flex items-center gap-1.5 text-[10px] font-mono font-semibold bg-white text-navy-800 px-2 py-1 rounded border border-slate-200">
-                    <Terminal className="w-3 h-3 text-purple-600" />
-                    <span>{msg.toolCalled}</span>
-                  </div>
-                )}
+                {/* Tool Call & Provider Pill */}
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  {msg.toolCalled && (
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono font-semibold bg-white text-navy-800 px-2 py-0.5 rounded border border-slate-200">
+                      <Terminal className="w-3 h-3 text-purple-600" />
+                      <span>{msg.toolCalled}</span>
+                    </div>
+                  )}
+                  {msg.provider && (
+                    <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 ml-auto flex items-center gap-1">
+                      <Sparkles className="w-2.5 h-2.5 text-primary-500" />
+                      {msg.provider}
+                    </span>
+                  )}
+                </div>
 
                 <div className="whitespace-pre-line leading-relaxed">
                   {msg.content}
@@ -236,7 +246,7 @@ export const AiAssistantPage: React.FC = () => {
                   <div className="p-3 bg-white rounded-xl border border-purple-200 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                        Resolved Schedule
+                        Verified Allocation Rationale
                       </span>
                       <Button
                         variant="ghost"
@@ -248,12 +258,11 @@ export const AiAssistantPage: React.FC = () => {
                         Open Engine View
                       </Button>
                     </div>
-                    <p className="text-[11px] text-slate-600">
-                      Primary Slot: <strong>Aarav Sharma</strong> (Autonomous Drone Swarm) — 14:00 to 18:00 UTC.
-                    </p>
-                    <p className="text-[11px] text-slate-600">
-                      Shifted Equivalent: <strong>Elena Rostova</strong> (Vision LLM) — NVIDIA H100 SuperServer at 15:00 UTC.
-                    </p>
+                    {msg.dataCards.payload.conflict?.resolution?.explanations?.slice(0, 3).map((exp: any) => (
+                      <div key={exp.requestId} className="text-[11px] text-slate-700 border-l-2 border-purple-400 pl-2">
+                        <strong>{exp.userName}</strong> ({exp.requestTitle}): {exp.explanationText}
+                      </div>
+                    ))}
                   </div>
                 )}
 

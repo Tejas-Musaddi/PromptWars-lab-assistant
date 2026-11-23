@@ -100,18 +100,72 @@ class GenAiPrompt(BaseModel):
 @app.post("/api/assistant/generate")
 def proxy_gemini_assistant(payload: GenAiPrompt):
     """
-    Secure backend proxy for Gemini.
-    API keys remain strictly in server environment variables.
+    Secure backend proxy for Gemini GenAI model.
+    API keys remain strictly in server environment variables and are NEVER exposed to the frontend.
     """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {
             "status": "offline_fallback",
-            "message": "Gemini API key not configured on server. Operating in offline semantic rule-engine mode.",
+            "is_real_llm": False,
+            "provider": "Deterministic Semantic Engine",
+            "message": "GEMINI_API_KEY not configured on server. Operating in offline semantic rule-engine mode.",
         }
 
-    # If key configured, proxy securely with prompt-injection isolation
-    return {
-        "status": "success",
-        "enhancedRationale": "Grounded via Gemini Pro 1.5 proxy with isolated schema validation."
-    }
+    try:
+        import urllib.request
+        import json
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        request_body = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": (
+                                "You are LabLink's expert academic laboratory resource planner. "
+                                "Analyze the following project description, identify required hardware instruments, "
+                                "specifications, and safety requirements:\n\n"
+                                f"{payload.projectDescription}"
+                            )
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 600,
+            }
+        }
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(request_body).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            candidates = res_data.get("candidates", [])
+            if candidates:
+                text_part = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                return {
+                    "status": "success",
+                    "is_real_llm": True,
+                    "provider": "Gemini 1.5 Flash (Server Verified)",
+                    "enhancedRationale": text_part.strip(),
+                }
+
+        return {
+            "status": "offline_fallback",
+            "is_real_llm": False,
+            "provider": "Deterministic Semantic Engine",
+            "message": "Gemini returned empty response; fallback active.",
+        }
+    except Exception as exc:
+        return {
+            "status": "offline_fallback",
+            "is_real_llm": False,
+            "provider": "Deterministic Semantic Engine",
+            "message": f"Gemini server error: {str(exc)}. Seamlessly switched to offline semantic engine.",
+        }

@@ -99,6 +99,19 @@ export function calculateRequirementCriticality(
 
   if (isDirectlyNamed) return 100;
 
+  // Check technical specifications match
+  if (equipment.specs && Object.keys(equipment.specs).length > 0) {
+    const hasSpecMatch = Object.entries(equipment.specs).some(([specKey, specVal]) => {
+      const kLower = specKey.toLowerCase();
+      const vLower = String(specVal).toLowerCase();
+      return project.attachedRequirements.some((req) => {
+        const rLower = req.toLowerCase();
+        return rLower.includes(kLower) || rLower.includes(vLower);
+      });
+    });
+    if (hasSpecMatch) return 90;
+  }
+
   // Check category match
   const isCategoryMatch = project.requiredEquipmentCategories.includes(equipment.categoryId);
   if (isCategoryMatch) return 75;
@@ -117,7 +130,7 @@ export function scoreBookingRequest(
   weights: EngineWeightConfig = DEFAULT_ENGINE_WEIGHTS,
   referenceTime?: string
 ): ScoreBreakdown {
-  const refMs = referenceTime ? new Date(referenceTime).getTime() : new Date('2026-11-23T12:00:00Z').getTime();
+  const refMs = referenceTime ? new Date(referenceTime).getTime() : Date.now();
 
   const deadlineUrgency = calculateDeadlineUrgency(project.deadline, refMs);
   const projectPriority = calculateProjectPriority(project.priority);

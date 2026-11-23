@@ -192,9 +192,19 @@ export const FacultyPortalPage: React.FC = () => {
                       <Sparkles className="w-3.5 h-3.5 text-primary-600" />
                       LabLink Engine Rationale:
                     </span>
-                    <p className="text-slate-600">
-                      Primary requested window assigned to Aarav Sharma (critical priority, earliest thesis deadline, low prior usage). Elena Rostova's team is shifted to equivalent hardware (NVIDIA H100 Node 01) with zero schedule disruption.
-                    </p>
+                    {conf.resolution?.explanations && conf.resolution.explanations.length > 0 ? (
+                      <div className="space-y-1 text-slate-600">
+                        {conf.resolution.explanations.map((exp: any) => (
+                          <p key={exp.requestId}>
+                            <strong className="text-navy-800">{exp.userName}</strong>: {exp.explanationText}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-slate-600">
+                        Fair Allocation Engine computed optimal resolution respecting project deadlines, hard safety constraints, and historical usage equity.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>

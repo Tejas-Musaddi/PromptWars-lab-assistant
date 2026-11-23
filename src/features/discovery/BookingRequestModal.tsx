@@ -19,6 +19,8 @@ interface BookingRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  initialStartTime?: string;
+  initialEndTime?: string;
 }
 
 export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
@@ -26,6 +28,8 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  initialStartTime,
+  initialEndTime,
 }) => {
   const {
     currentUser,
@@ -40,15 +44,34 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
     p.leadStudentId === currentUser.id || p.teamMembers.includes(currentUser.id)
   );
 
+  const getTomorrowDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
   const [projectId, setProjectId] = useState(
     userProjects.length > 0 ? userProjects[0].id : projects[0]?.id || ''
   );
-  const [startDate, setStartDate] = useState('2026-11-25');
-  const [startTime, setStartTime] = useState('14:00');
-  const [endTime, setEndTime] = useState('18:00');
+  const [startDate, setStartDate] = useState(getTomorrowDate());
+  const [startTime, setStartTime] = useState('10:00');
+  const [endTime, setEndTime] = useState('14:00');
   const [purpose, setPurpose] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  // Sync initial times from calendar selection
+  React.useEffect(() => {
+    if (initialStartTime) {
+      const parts = initialStartTime.split('T');
+      if (parts[0]) setStartDate(parts[0]);
+      if (parts[1]) setStartTime(parts[1].slice(0, 5));
+    }
+    if (initialEndTime) {
+      const parts = initialEndTime.split('T');
+      if (parts[1]) setEndTime(parts[1].slice(0, 5));
+    }
+  }, [initialStartTime, initialEndTime, isOpen]);
 
   if (!equipment) return null;
 
@@ -95,7 +118,7 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
         const reqEnd = new Date(endIso).getTime();
         return Math.max(reqStart, bStart) < Math.min(reqEnd, bEnd);
       });
-      if (hasBookingOverlap || equipment.id === 'eq-gpu---ai-workstations-001') {
+      if (hasBookingOverlap) {
         hasContention = true;
       }
     }
@@ -108,21 +131,26 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
       return;
     }
 
-    createBookingRequest({
-      projectId,
-      userId: currentUser.id,
-      equipmentId: equipment.id,
-      startTime: startIso,
-      endTime: endIso,
-      purpose,
-    });
+    try {
+      createBookingRequest({
+        projectId,
+        userId: currentUser.id,
+        equipmentId: equipment.id,
+        startTime: startIso,
+        endTime: endIso,
+        purpose,
+      });
 
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      onClose();
-      if (onSuccess) onSuccess();
-    }, 1500);
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        onClose();
+        if (onSuccess) onSuccess();
+      }, 1500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`Failed to submit request: ${msg}`);
+    }
   };
 
   return (

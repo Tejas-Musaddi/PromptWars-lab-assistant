@@ -118,7 +118,7 @@ export function findAlternativeSlot(
 }
 
 /**
- * Searches for an alternative equivalent equipment unit.
+ * Searches for an alternative equivalent equipment unit, ranking by technical spec compatibility.
  */
 export function findAlternativeEquipmentUnit(
   request: BookingRequest,
@@ -135,12 +135,39 @@ export function findAlternativeEquipmentUnit(
 
   // Candidate units: explicitly configured equivalent equipment or same category
   const candidateUnitIds = primaryEquipment.equivalentEquipmentIds || [];
-  const candidateUnits = allEquipment.filter(
-    (e) =>
-      e.id !== primaryEquipment.id &&
-      (candidateUnitIds.includes(e.id) ||
-        (e.categoryId === primaryEquipment.categoryId && e.condition === 'optimal'))
-  );
+  const candidateUnits = allEquipment
+    .filter(
+      (e) =>
+        e.id !== primaryEquipment.id &&
+        (candidateUnitIds.includes(e.id) ||
+          (e.categoryId === primaryEquipment.categoryId &&
+            (e.condition === 'optimal' || e.condition === 'good')))
+    )
+    .map((e) => {
+      let compatibilityScore = 0;
+      if (candidateUnitIds.includes(e.id)) compatibilityScore += 100;
+      if (e.categoryId === primaryEquipment.categoryId) compatibilityScore += 50;
+      if (e.departmentId === primaryEquipment.departmentId) compatibilityScore += 20;
+      if (e.condition === 'optimal') compatibilityScore += 15;
+      else if (e.condition === 'good') compatibilityScore += 8;
+
+      // Check specs matching project requirements
+      if (e.specs && Object.keys(e.specs).length > 0) {
+        const specMatches = Object.entries(e.specs).filter(([k, v]) => {
+          const kStr = k.toLowerCase();
+          const vStr = String(v).toLowerCase();
+          return project.attachedRequirements.some((r) => {
+            const rLower = r.toLowerCase();
+            return rLower.includes(kStr) || rLower.includes(vStr);
+          });
+        }).length;
+        compatibilityScore += specMatches * 25;
+      }
+
+      return { unit: e, score: compatibilityScore };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.unit);
 
   for (const unit of candidateUnits) {
     const lab = labMap.get(unit.labId);

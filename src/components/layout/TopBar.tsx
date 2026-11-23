@@ -161,8 +161,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                   onClick={() => setIsRoleDropdownOpen(false)}
                 />
                 <div className="absolute right-0 mt-1.5 w-56 rounded-card border border-surface-border bg-white p-1.5 shadow-elevated z-50 animate-in fade-in zoom-in-95">
-                  <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Switch Active Persona
+                  <div className="px-2.5 py-1.5 flex items-center justify-between border-b border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Active Persona
+                    </span>
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      Evaluator Demo
+                    </span>
                   </div>
                   {roles.map((r) => (
                     <button

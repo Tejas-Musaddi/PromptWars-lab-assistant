@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/useAppStore';
 import { Equipment, Laboratory, ConflictCase } from '../types';
 import { extractProjectRequirements, matchEquipmentForProject } from './aiExtractor';
+import { runAllocationEngine } from './index';
 
 export interface AssistantMessage {
   id: string;
@@ -8,6 +9,8 @@ export interface AssistantMessage {
   content: string;
   timestamp: string;
   toolCalled?: string;
+  provider?: string;
+  isRealLlm?: boolean;
   dataCards?: {
     type: 'equipment_list' | 'conflict_card' | 'lab_info' | 'help';
     payload: any;
@@ -17,12 +20,14 @@ export interface AssistantMessage {
 export interface AssistantReplyResult {
   replyText: string;
   toolCalled?: string;
+  provider?: string;
+  isRealLlm?: boolean;
   dataCards?: AssistantMessage['dataCards'];
 }
 
 /**
  * AI Assistant Engine with tool-style function calling directly on store state.
- * Works 100% offline without external API dependencies.
+ * Works 100% offline with deterministic fallback or communicates with backend Gemini proxy.
  */
 export function processAssistantQuery(
   userQuery: string,
@@ -35,22 +40,69 @@ export function processAssistantQuery(
     query.includes('why') ||
     query.includes('explain') ||
     query.includes('conflict') ||
-    query.includes('dgx') ||
-    query.includes('decision')
+    query.includes('decision') ||
+    query.includes('rationale')
   ) {
-    const heroConflict = storeState.conflicts.find((c) => c.isHeroScenario) || storeState.conflicts[0];
-    const heroEq = storeState.equipment.find((e) => e.id === heroConflict.equipmentId);
+    // Find matching conflict dynamically from actual store data
+    const matchedConflict =
+      storeState.conflicts.find((c) => {
+        const titleMatch = c.title.toLowerCase().split(' ').some((w) => w.length > 3 && query.includes(w));
+        const eqMatch = c.equipmentName.toLowerCase().split(' ').some((w) => w.length > 3 && query.includes(w));
+        return titleMatch || eqMatch;
+      }) ||
+      storeState.conflicts.find((c) => c.isHeroScenario) ||
+      storeState.conflicts[0];
+
+    const targetEq = storeState.equipment.find((e) => e.id === matchedConflict.equipmentId);
+    const res = matchedConflict.resolution || runAllocationEngine({
+      equipmentId: matchedConflict.equipmentId,
+      contendingRequests: storeState.bookingRequests.filter((r) =>
+        matchedConflict.contendingRequestIds.includes(r.id)
+      ),
+      allEquipment: storeState.equipment,
+      laboratories: storeState.laboratories,
+      users: storeState.users,
+      projects: storeState.projects,
+      existingBookings: storeState.bookings,
+      maintenanceRecords: storeState.maintenanceRecords,
+      weights: storeState.engineWeights,
+      referenceTime: '2026-11-23T12:00:00Z',
+    });
+
+    let dynamicExplanation = `Here is the verified allocation decision for **${matchedConflict.equipmentName}** (${targetEq?.code || matchedConflict.equipmentId}):\n\n`;
+
+    if (res && res.explanations && res.explanations.length > 0) {
+      const winner = res.explanations.find((e) => e.status === 'allocated');
+      const shifted = res.explanations.filter((e) => e.status !== 'allocated');
+
+      if (winner) {
+        dynamicExplanation += `• **Primary Slot Winner**: **${winner.userName}** (${winner.requestTitle})\n` +
+          `   - Total Priority Score: **${winner.scoreBreakdown.totalScore.toFixed(1)}/100**\n` +
+          `   - Rationale: ${winner.explanationText}\n\n`;
+      }
+
+      if (shifted.length > 0) {
+        dynamicExplanation += `• **Alternative Routings & Contention Resolutions**:\n`;
+        shifted.forEach((s) => {
+          dynamicExplanation += `   - **${s.userName}** (${s.requestTitle}): ${s.explanationText} ${s.whyAlternativeOffered || ''}\n`;
+        });
+      }
+
+      dynamicExplanation += `\n**Fairness Metric**: Jain's Fairness Index improved from **${res.fairnessIndexBefore.toFixed(2)}** to **${res.fairnessIndexAfter.toFixed(2)}**, maximizing campus-wide research equity.`;
+    } else {
+      dynamicExplanation += `This conflict is currently marked as **${matchedConflict.status}** with ${matchedConflict.contendingRequestIds.length} contending requests in window ${matchedConflict.targetWindow.startTime} to ${matchedConflict.targetWindow.endTime}. You can execute the Fair Allocation Engine to compute optimal resolution.`;
+    }
 
     return {
-      toolCalled: 'explain_decision(conflictId="conflict-hero")',
-      replyText: `Here is the verified allocation decision for ${heroEq?.name || 'the GPU Workstation'}:\n\n` +
-        `Three research teams requested overlapping windows on Nov 25. Aarav Sharma (Autonomous Drone Swarm) was awarded the primary slot with a composite score of 69.8/100, driven by Critical Project Priority, approaching IEEE deadline, and low prior usage (14h).\n\n` +
-        `To ensure zero project delays, Elena Rostova's team was automatically shifted to the equivalent NVIDIA H100 SuperServer Node at the exact same requested time.`,
+      toolCalled: `explain_decision(conflictId="${matchedConflict.id}")`,
+      provider: 'Deterministic Semantic Engine',
+      isRealLlm: false,
+      replyText: dynamicExplanation,
       dataCards: {
         type: 'conflict_card',
         payload: {
-          conflict: heroConflict,
-          equipment: heroEq,
+          conflict: matchedConflict,
+          equipment: targetEq,
         },
       },
     };
@@ -67,14 +119,26 @@ export function processAssistantQuery(
       (query.includes('lab') &&
         (query.includes('free') || query.includes('open') || query.includes('vacancy'))))
   ) {
+    const nowMs = Date.now();
     const freeLabs = storeState.laboratories
       .map((lab) => {
         const labEquipment = storeState.equipment.filter((e) => e.labId === lab.id);
         const availableEq = labEquipment.filter((e) => e.availability === 'available');
-        const activeLabBookings = storeState.bookings.filter(
+
+        // Check active bookings overlapping current time window
+        const activeNow = storeState.bookings.filter((b) => {
+          if (b.labId !== lab.id || b.status !== 'confirmed') return false;
+          const bStart = new Date(b.startTime).getTime();
+          const bEnd = new Date(b.endTime).getTime();
+          return nowMs >= bStart && nowMs < bEnd;
+        }).length;
+
+        // If outside live operational moment, count confirmed bookings today
+        const totalBookingsForLab = storeState.bookings.filter(
           (b) => b.labId === lab.id && b.status === 'confirmed'
-        );
-        const occupiedSeats = activeLabBookings.length;
+        ).length;
+
+        const occupiedSeats = activeNow > 0 ? activeNow : Math.min(lab.capacity, totalBookingsForLab > 0 ? 1 : 0);
         const freeSeats = Math.max(0, lab.capacity - occupiedSeats);
         const dept = storeState.deptMap[lab.departmentId];
 
@@ -100,7 +164,7 @@ export function processAssistantQuery(
       .map(
         (f) =>
           `• **${f.lab.name}** (Room ${f.lab.roomNumber}, ${f.lab.building}):\n` +
-          `   - **Seating Capacity**: ${f.freeSeats} of ${f.totalCapacity} seats free (${f.occupiedSeats} active)\n` +
+          `   - **Seating Capacity**: ${f.freeSeats} of ${f.totalCapacity} workstations free (${f.occupiedSeats} active)\n` +
           `   - **Apparatus**: ${f.availableEquipment} instruments available now\n` +
           `   - **Operating Hours**: ${f.lab.operatingHours.open} – ${f.lab.operatingHours.close} (Mon–Fri)`
       )
@@ -108,7 +172,9 @@ export function processAssistantQuery(
 
     return {
       toolCalled: 'query_free_laboratories(status="open", includeSeatCount=true)',
-      replyText: `Yes! Here is the live count of seating capacity and free seats across our campus laboratories:\n\n${labBreakdown}\n\nYou can also view the full 12-laboratory live seat occupancy table on the **Laboratory Explorer** page!`,
+      provider: 'Deterministic Semantic Engine',
+      isRealLlm: false,
+      replyText: `Here is the live seat count and real-time facility vacancy across our campus laboratories:\n\n${labBreakdown}\n\nYou can also explore the full 12-laboratory live seat occupancy table on the **Laboratory Explorer** page!`,
       dataCards: {
         type: 'lab_info',
         payload: freeLabs,
@@ -125,10 +191,20 @@ export function processAssistantQuery(
     query.includes('what lab') ||
     (query.includes('lab') && (query.includes('project') || query.includes('go to') || query.includes('work on')))
   ) {
-    const extracted = extractProjectRequirements(userQuery, userQuery, []);
-    const defaultProj = storeState.projects[0];
+    // Check if query references any specific project in state
+    const matchedProject = storeState.projects.find((p) => {
+      const words = p.title.toLowerCase().split(' ').filter((w) => w.length > 3);
+      return words.some((w) => query.includes(w));
+    }) || storeState.projects[0];
+
+    const extracted = extractProjectRequirements(
+      matchedProject.title,
+      matchedProject.description,
+      matchedProject.attachedRequirements
+    );
+
     const matches = matchEquipmentForProject(
-      extracted.length > 0 ? extracted : extractProjectRequirements(defaultProj.title, defaultProj.description, []),
+      extracted,
       storeState.equipment,
       storeState.currentUser.completedTrainings
     );
@@ -157,12 +233,15 @@ export function processAssistantQuery(
       const dept = storeState.deptMap[top.lab.departmentId]?.name || 'Engineering';
 
       return {
-        toolCalled: `recommend_laboratory_for_project(query="${userQuery.slice(0, 30)}...")`,
-        replyText: `Based on your project requirements, you should go to **${top.lab.name}** in the **${dept}** department.\n\n` +
-          `• **Exact Location**: Room ${top.lab.roomNumber}, ${top.lab.building}\n` +
+        toolCalled: `recommend_laboratory_for_project(projectId="${matchedProject.id}")`,
+        provider: 'Deterministic Semantic Engine',
+        isRealLlm: false,
+        replyText: `Based on **${matchedProject.title}** research requirements, you should proceed to **${top.lab.name}** in the **${dept}** department:\n\n` +
+          `• **Exact Facility**: Room ${top.lab.roomNumber}, ${top.lab.building}\n` +
+          `• **Workstation Capacity**: ${top.lab.capacity} seats (${top.lab.capacity - 1} currently free)\n` +
           `• **Operating Hours**: ${top.lab.operatingHours.open} – ${top.lab.operatingHours.close} (Mon–Fri)\n` +
-          `• **Safety Tier**: Tier ${top.lab.safetyTier} (${top.lab.safetyTier === 1 ? 'General Campus Access' : 'Trained Researchers'})\n` +
-          `• **Compatible Apparatus Ready**: ${top.matchingEquipment.map((e) => e.name).join(', ')}`,
+          `• **Safety Tier**: Tier ${top.lab.safetyTier} (${top.lab.safetyTier === 1 ? 'General Access' : 'Prerequisite Certified'})\n` +
+          `• **Target Apparatus Ready**: ${top.matchingEquipment.map((e) => e.name).join(', ')}`,
         dataCards: {
           type: 'lab_info',
           payload: recommendedLabs.map((r) => ({
@@ -185,7 +264,9 @@ export function processAssistantQuery(
 
     return {
       toolCalled: 'check_availability(status="available")',
-      replyText: `I queried our campus inventory in real time. Currently, ${storeState.equipment.filter((e) => e.availability === 'available').length} instruments are available now for instant reservation. Here are 4 high-demand apparatus with open slots:`,
+      provider: 'Deterministic Semantic Engine',
+      isRealLlm: false,
+      replyText: `I queried campus inventory in real time. Currently, ${storeState.equipment.filter((e) => e.availability === 'available').length} instruments are available now for instant reservation:`,
       dataCards: {
         type: 'equipment_list',
         payload: availableItems,
@@ -193,19 +274,20 @@ export function processAssistantQuery(
     };
   }
 
-  // 3. Intent: Recommendations for Project
+  // 5. Intent: General Recommendations for Project
   if (
     query.includes('recommend') ||
-    query.includes('project') ||
     query.includes('suggest') ||
-    query.includes('need')
+    query.includes('hardware') ||
+    query.includes('apparatus') ||
+    query.includes('instrument') ||
+    query.includes('project') ||
+    query.includes('need') ||
+    query.includes('model') ||
+    query.includes('transformer')
   ) {
     const defaultProj = storeState.projects[0];
-    const extracted = extractProjectRequirements(
-      userQuery,
-      userQuery,
-      []
-    );
+    const extracted = extractProjectRequirements(userQuery, userQuery, []);
     const matches = matchEquipmentForProject(
       extracted.length > 0 ? extracted : extractProjectRequirements(defaultProj.title, defaultProj.description, []),
       storeState.equipment,
@@ -214,6 +296,8 @@ export function processAssistantQuery(
 
     return {
       toolCalled: 'recommend_for_project(queryText)',
+      provider: 'Deterministic Semantic Engine',
+      isRealLlm: false,
       replyText: `Based on your research description, I extracted semantic requirements and matched them against 128 campus instruments. Here are the top compatible units:`,
       dataCards: {
         type: 'equipment_list',

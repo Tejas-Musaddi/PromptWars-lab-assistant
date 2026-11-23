@@ -9,6 +9,22 @@ import {
 } from '../types';
 import { FeasibilityAssessment } from './types';
 
+function parseSlotMinutes(isoStr: string): { dayOfWeek: number; minutes: number } {
+  const isUtc = isoStr.endsWith('Z');
+  const d = new Date(isoStr);
+  if (isUtc) {
+    return { dayOfWeek: d.getUTCDay(), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() };
+  }
+  const timeMatch = isoStr.match(/T(\d{2}):(\d{2})/);
+  if (timeMatch) {
+    return {
+      dayOfWeek: d.getDay(),
+      minutes: parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10),
+    };
+  }
+  return { dayOfWeek: d.getDay(), minutes: d.getHours() * 60 + d.getMinutes() };
+}
+
 /**
  * Checks hard constraints for a single booking request.
  * Hard constraints ALWAYS override scores.
@@ -70,23 +86,23 @@ export function checkHardConstraints(
   }
 
   // 5. Within lab operating hours and days
-  const startDate = new Date(request.startTime);
-  const dayOfWeek = startDate.getUTCDay(); // 0 = Sun, 1 = Mon ...
+  const startTiming = parseSlotMinutes(request.startTime);
+  const endTiming = parseSlotMinutes(request.endTime);
+
   if (
     lab.operatingHours &&
     lab.operatingHours.daysOfWeek &&
-    !lab.operatingHours.daysOfWeek.includes(dayOfWeek)
+    !lab.operatingHours.daysOfWeek.includes(startTiming.dayOfWeek)
   ) {
     reasons.push(
-      `Lab ${lab.name} is closed on day of week ${dayOfWeek} (Sunday=0, Monday=1).`
+      `Lab ${lab.name} is closed on day of week ${startTiming.dayOfWeek} (Sunday=0, Monday=1).`
     );
   } else if (lab.operatingHours) {
     const [openH, openM] = lab.operatingHours.open.split(':').map(Number);
     const [closeH, closeM] = lab.operatingHours.close.split(':').map(Number);
 
-    const slotStartMin = startDate.getUTCHours() * 60 + startDate.getUTCMinutes();
-    const endDate = new Date(request.endTime);
-    const slotEndMin = endDate.getUTCHours() * 60 + endDate.getUTCMinutes();
+    const slotStartMin = startTiming.minutes;
+    const slotEndMin = endTiming.minutes;
 
     const labOpenMin = openH * 60 + openM;
     const labCloseMin = closeH * 60 + closeM;

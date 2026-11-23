@@ -463,9 +463,9 @@ export const useAppStore = create<AppState>((set, get) => {
         guidedTourStep: 0,
       });
 
-      // Background re-seed Supabase if connected
+      // Background re-seed & clean Supabase if connected
       if (SupabaseService.isAvailable()) {
-        SupabaseService.seedSupabase(fresh).catch(console.error);
+        SupabaseService.resetDemoStateSupabase(fresh).catch(console.error);
       }
     },
 
@@ -624,13 +624,14 @@ export const useAppStore = create<AppState>((set, get) => {
           w.id === topCandidate.id ? { ...w, status: 'promoted' as const } : w
         );
 
-        // Create new confirmed booking from waitlist promotion
+        // Lookup requesting student and project dynamically
+        const candReq = state.bookingRequests.find((r) => r.id === topCandidate.bookingRequestId);
         const newBookingId = `book-promoted-${Date.now()}`;
         promotedBooking = {
           id: newBookingId,
           requestId: topCandidate.bookingRequestId,
-          projectId: 'proj-1',
-          userId: 'student-2',
+          projectId: candReq?.projectId || state.projects[0]?.id || 'proj-1',
+          userId: candReq?.userId || target.userId,
           equipmentId: topCandidate.equipmentId,
           labId: target.labId,
           startTime: topCandidate.preferredStartTime,
@@ -643,7 +644,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
         promotedNotif = {
           id: `notif-${Date.now()}`,
-          userId: 'student-2',
+          userId: candReq?.userId || target.userId,
           title: 'Slot Available! Waitlist Promotion Successful',
           message: `Your waitlisted slot for ${target.equipmentId} has been confirmed due to a cancellation.`,
           type: 'booking',
@@ -699,20 +700,24 @@ export const useAppStore = create<AppState>((set, get) => {
       const conflict = state.conflicts.find((c) => c.id === conflictId);
       if (!conflict || !conflict.resolution) return false;
 
-      // Commit feasible schedule atomically
-      const newBookings: Booking[] = conflict.resolution.feasibleSchedule.map((slot, idx) => ({
-        id: `book-alloc-${Date.now()}-${idx}`,
-        requestId: slot.requestId,
-        projectId: 'proj-1',
-        userId: 'student-1',
-        equipmentId: slot.equipmentId,
-        labId: 'lab-cs-1',
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        status: 'confirmed',
-        notes: `Committed via Faculty Approval (${comment || 'Fair Allocation Approved'})`,
-        createdAt: new Date().toISOString(),
-      }));
+      // Commit feasible schedule dynamically looking up real project, user, and lab IDs
+      const newBookings: Booking[] = conflict.resolution.feasibleSchedule.map((slot, idx) => {
+        const req = state.bookingRequests.find((r) => r.id === slot.requestId);
+        const eq = state.equipmentMap[slot.equipmentId];
+        return {
+          id: `book-alloc-${Date.now()}-${idx}`,
+          requestId: slot.requestId,
+          projectId: req?.projectId || state.projects[0]?.id || 'proj-1',
+          userId: req?.userId || state.currentUser.id,
+          equipmentId: slot.equipmentId,
+          labId: eq?.labId || 'lab-cs-1',
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          status: 'confirmed',
+          notes: `Committed via Faculty Approval (${comment || 'Fair Allocation Approved'})`,
+          createdAt: new Date().toISOString(),
+        };
+      });
 
       // Update conflict status
       const updatedConflicts = state.conflicts.map((c) =>
@@ -734,27 +739,33 @@ export const useAppStore = create<AppState>((set, get) => {
         return req;
       });
 
-      // Notify students
-      const newNotif: Notification = {
-        id: `notif-${Date.now()}`,
-        userId: 'student-1',
-        title: 'Allocation Approved by Faculty',
-        message: `Your allocation schedule for ${conflict.equipmentName} was approved and committed.`,
-        type: 'approval',
-        read: false,
-        createdAt: new Date().toISOString(),
-      };
+      // Notify all involved students dynamically
+      const newNotifs: Notification[] = conflict.contendingRequestIds.map((reqId) => {
+        const req = state.bookingRequests.find((r) => r.id === reqId);
+        const wasScheduled = conflict.resolution?.feasibleSchedule.some((s) => s.requestId === reqId);
+        return {
+          id: `notif-${Date.now()}-${reqId}`,
+          userId: req?.userId || state.currentUser.id,
+          title: wasScheduled ? 'Allocation Approved by Faculty' : 'Waitlisted by Fair Allocation',
+          message: wasScheduled
+            ? `Your requested window for ${conflict.equipmentName} has been approved and committed by faculty.`
+            : `Your request was queued on the priority waitlist due to higher-contention criteria.`,
+          type: 'approval',
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+      });
 
       set({
         bookings: [...state.bookings, ...newBookings],
         conflicts: updatedConflicts,
         bookingRequests: updatedRequests,
-        notifications: [newNotif, ...state.notifications],
+        notifications: [...newNotifs, ...state.notifications],
       });
 
       persistLocal(get());
 
-      // Sync committed records to Supabase with revalidation guard
+      // Sync committed records to Supabase with context revalidation guard
       const resolvedConflict = updatedConflicts.find((c) => c.id === conflictId);
       if (resolvedConflict) {
         SupabaseService.syncConflict(resolvedConflict).catch(console.error);
@@ -762,10 +773,14 @@ export const useAppStore = create<AppState>((set, get) => {
       SupabaseService.revalidateAndCommitAllocation(
         conflictId,
         conflict.resolution.feasibleSchedule,
-        comment
+        comment,
+        {
+          getRequest: (id) => get().bookingRequests.find((r) => r.id === id),
+          getEquipment: (id) => get().equipmentMap[id],
+        }
       ).catch(console.error);
       newBookings.forEach((b) => SupabaseService.syncBooking(b, 'insert').catch(console.error));
-      SupabaseService.syncNotification(newNotif).catch(console.error);
+      newNotifs.forEach((n) => SupabaseService.syncNotification(n).catch(console.error));
 
       get().addAuditLog(
         'ALLOCATION_APPROVED',

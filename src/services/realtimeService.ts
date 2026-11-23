@@ -29,15 +29,24 @@ export interface RealtimeHandlers {
 
 let activeChannel: RealtimeChannel | null = null;
 let currentStatus: 'CONNECTING' | 'SUBSCRIBED' | 'DISCONNECTED' = 'DISCONNECTED';
+let reconnectTimer: any = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 export const RealtimeService = {
   /**
    * Subscribe to live PostgreSQL database changes across all operational tables.
+   * Guarantees singleton subscription and handles automatic reconnection.
    */
   subscribe(handlers: RealtimeHandlers): () => void {
     if (!isSupabaseConfigured() || !supabase) {
       handlers.onStatusChange?.('DISCONNECTED');
       return () => {};
+    }
+
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
 
     // Teardown existing channel if already active
@@ -49,7 +58,7 @@ export const RealtimeService = {
     currentStatus = 'CONNECTING';
 
     try {
-      const channel = supabase.channel('lablink_live_sync');
+      const channel = supabase.channel(`lablink_live_sync_${Date.now()}`);
 
       // 1. Bookings Realtime (Calendar & Dashboard live slots)
       channel.on(
@@ -135,10 +144,22 @@ export const RealtimeService = {
         }
         if (status === 'SUBSCRIBED') {
           currentStatus = 'SUBSCRIBED';
+          reconnectAttempts = 0;
           handlers.onStatusChange?.('SUBSCRIBED');
         } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
           currentStatus = 'DISCONNECTED';
           handlers.onStatusChange?.('DISCONNECTED');
+
+          // Exponential backoff reconnection
+          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            const backoffDelay = Math.min(10000, 1000 * Math.pow(2, reconnectAttempts));
+            reconnectTimer = setTimeout(() => {
+              if (currentStatus !== 'SUBSCRIBED') {
+                RealtimeService.subscribe(handlers);
+              }
+            }, backoffDelay);
+          }
         }
       });
 
@@ -155,6 +176,10 @@ export const RealtimeService = {
    * Disconnect and release the active Realtime channel.
    */
   unsubscribe(): void {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     if (activeChannel && supabase) {
       supabase.removeChannel(activeChannel).catch(() => {});
       activeChannel = null;

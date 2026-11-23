@@ -6,6 +6,10 @@ export interface ExtractedRequirement {
   rationale: string;
   suggestedSpecs: Record<string, string>;
   safetyWarnings: string[];
+  recommendedQuantity?: number;
+  estimatedDurationHours?: number;
+  inferredDeadline?: string | null;
+  requiredPrerequisites?: string[];
 }
 
 export interface EquipmentMatchResult {
@@ -127,12 +131,44 @@ export function extractProjectRequirements(
     if (matchCount > 0) {
       // Calculate normalized confidence score
       const confidence = Math.min(0.99, Math.max(0.45, (matchCount / 4) * 0.95));
+
+      // Extract quantity mentions (e.g. "2 units", "pair of GPUs", "4 workstations")
+      let quantity = 1;
+      const qtyMatch = fullText.match(/(\d+)\s*(?:units?|devices?|nodes?|stations?|apparatus|gpus?|actuators?)/);
+      if (qtyMatch) {
+        quantity = Math.min(8, Math.max(1, parseInt(qtyMatch[1], 10)));
+      } else if (fullText.includes('pair of') || fullText.includes('dual')) {
+        quantity = 2;
+      }
+
+      // Extract duration mentions (e.g. "6 hours", "overnight", "multi-day")
+      let durationHours = 4;
+      const durMatch = fullText.match(/(\d+)\s*(?:hours?|hrs?|h\b)/);
+      if (durMatch) {
+        durationHours = Math.min(12, Math.max(1, parseInt(durMatch[1], 10)));
+      } else if (fullText.includes('overnight') || fullText.includes('24h')) {
+        durationHours = 8;
+      } else if (fullText.includes('preliminary') || fullText.includes('quick scan')) {
+        durationHours = 2;
+      }
+
+      // Extract deadline if present
+      let deadline: string | null = null;
+      const dateMatch = fullText.match(/(\d{4}-\d{2}-\d{2})/);
+      if (dateMatch) {
+        deadline = dateMatch[1];
+      }
+
       extracted.push({
         category: rule.category,
         confidence: Math.round(confidence * 100) / 100,
         rationale: `Detected research intents: "${hitKeywords.slice(0, 3).join('", "')}". Matches ${rule.category} domain.`,
         suggestedSpecs: rule.specs,
         safetyWarnings: rule.trainings,
+        recommendedQuantity: quantity,
+        estimatedDurationHours: durationHours,
+        inferredDeadline: deadline,
+        requiredPrerequisites: rule.trainings,
       });
     }
   });

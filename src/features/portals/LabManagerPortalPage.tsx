@@ -68,11 +68,17 @@ export const LabManagerPortalPage: React.FC = () => {
   const [newMaxHours, setNewMaxHours] = useState(4);
   const [newLocation, setNewLocation] = useState('Bench Bay 3');
 
+  const getTomorrowTime = (hour: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.toISOString().split('T')[0]}T${String(hour).padStart(2, '0')}:00`;
+  };
+
   // New Maintenance Form State
   const [maintEqId, setMaintEqId] = useState(equipment[0]?.id || '');
   const [maintTitle, setMaintTitle] = useState('');
-  const [maintStart, setMaintStart] = useState('2026-11-26T09:00');
-  const [maintEnd, setMaintEnd] = useState('2026-11-26T14:00');
+  const [maintStart, setMaintStart] = useState(getTomorrowTime(9));
+  const [maintEnd, setMaintEnd] = useState(getTomorrowTime(14));
   const [maintType, setMaintType] = useState<MaintenanceRecord['type']>('routine');
   const [maintTech, setMaintTech] = useState('Field Certified Service Tech');
 
@@ -362,21 +368,100 @@ export const LabManagerPortalPage: React.FC = () => {
         </div>
       </Card>
 
+      {/* Scheduled Maintenance & Service Records Table */}
+      <Card className="overflow-hidden shadow-card">
+        <CardHeader className="bg-slate-50/70 p-4 border-b border-surface-border flex items-center justify-between">
+          <CardTitle className="text-sm font-bold text-navy-900 flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-amber-600" />
+            Scheduled Maintenance & Calibration Records ({maintenanceRecords.length})
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsMaintModalOpen(true)}
+            className="text-xs h-7"
+          >
+            Schedule New Service
+          </Button>
+        </CardHeader>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-50 text-[10px] uppercase text-slate-400 border-b border-surface-border">
+              <tr>
+                <th className="p-3">Apparatus</th>
+                <th className="p-3">Service Title</th>
+                <th className="p-3">Window</th>
+                <th className="p-3">Type</th>
+                <th className="p-3">Status</th>
+                <th className="p-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {maintenanceRecords.map((m) => {
+                const eq = equipment.find((e) => e.id === m.equipmentId);
+                return (
+                  <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="p-3 font-mono font-bold text-navy-900">
+                      {eq?.code || m.equipmentId}
+                    </td>
+                    <td className="p-3 font-medium text-navy-800">
+                      {m.title}
+                    </td>
+                    <td className="p-3 text-slate-500 whitespace-nowrap">
+                      {m.scheduledStart.slice(0, 16).replace('T', ' ')} &rarr; {m.scheduledEnd.slice(0, 16).replace('T', ' ')}
+                    </td>
+                    <td className="p-3 capitalize font-semibold text-slate-600">
+                      {m.type}
+                    </td>
+                    <td className="p-3">
+                      <StatusChip status={m.status} size="sm" />
+                    </td>
+                    <td className="p-3 text-right">
+                      {m.status !== 'completed' ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => updateMaintenanceStatus(m.id, 'completed')}
+                          className="text-[10px] h-6 px-2 text-emerald-700 hover:bg-emerald-50"
+                        >
+                          Mark Completed
+                        </Button>
+                      ) : (
+                        <span className="text-[11px] text-emerald-600 font-semibold flex items-center justify-end gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Complete
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
       {/* Simulated QR Code Scan Modal */}
       <Modal
         isOpen={isQrModalOpen}
         onClose={() => setIsQrModalOpen(false)}
-        title="Simulated Physical QR Bench Terminal"
-        description="Emulates the physical barcode scanner at the instrument workbench."
+        title="Physical QR Bench Scanner (Demo Emulation)"
+        description="Emulates the physical IoT barcode scanner at the laboratory workbench."
         size="md"
       >
         <div className="space-y-4">
           <div className="p-4 bg-slate-900 text-white rounded-xl text-center space-y-2">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-white">
-              <QrCode className="w-10 h-10" />
+            <div className="flex items-center justify-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                Demo Workbench Emulation
+              </span>
+            </div>
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-white">
+              <QrCode className="w-8 h-8" />
             </div>
             <p className="text-xs text-slate-300">
-              Scan student pass or instrument QR code to trigger check-in / check-out.
+              In real deployment, student badges or physical apparatus QR tags trigger automated check-in and check-out. Click any sample code below to test.
             </p>
           </div>
 
