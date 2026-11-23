@@ -230,7 +230,9 @@ BEGIN
     'maintenance_records', 'notifications', 'audit_logs', 'engine_weights'
   ])
   LOOP
+    EXECUTE format('GRANT ALL ON TABLE %s TO anon, authenticated, service_role;', t);
     EXECUTE format('DROP POLICY IF EXISTS "Public access policy on %s" ON %s;', t, t);
     EXECUTE format('CREATE POLICY "Public access policy on %s" ON %s FOR ALL TO public USING (true) WITH CHECK (true);', t, t);
   END LOOP;
 END $$;
+
