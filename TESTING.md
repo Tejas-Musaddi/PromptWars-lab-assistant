@@ -2,7 +2,7 @@
 
 ## 1. Test Architecture Overview
 
-LabLink employs a multi-tiered automated testing pyramid:
+LabLink employs a multi-tiered automated and manual testing pyramid:
 
 | Test Tier | Technology | Target Scope | Pass Criteria |
 | :--- | :--- | :--- | :--- |
@@ -10,6 +10,7 @@ LabLink employs a multi-tiered automated testing pyramid:
 | **Component Tests** | React Testing Library + Vitest | Booking form validation, Assistant store grounding, Conflict panel | Render reliability, store state accuracy, zero errors |
 | **End-to-End (E2E)** | Playwright | Hero conflict workflow, role switcher, reset demo, waitlist promotion | Full headless browser workflow execution |
 | **Accessibility (a11y)** | axe-core & manual keyboard audits | Semantic landmarks, contrast ratios, focus traps, aria labels | WCAG 2.2 AA compliant |
+| **Database & Realtime** | Supabase JS + Vitest Node | Relational schema integrity, RLS policies, pre-flight race condition guards, WebSocket broadcast | Zero 401/42501 errors, zero double-booking |
 
 ---
 
@@ -43,12 +44,35 @@ LabLink employs a multi-tiered automated testing pyramid:
   - Verifies form rendering with pre-populated equipment asset code and project selector.
   - Verifies HTML5 and Zod validation preventing empty purpose submissions.
 - `Assistant.test.tsx`:
-  - Verifies assistant executes tool-style function calls directly on store state (`check_availability`, `explain_decision`, `recommend_for_project`).
+  - Verifies assistant executes tool-style function calls directly on store state (`check_availability`, `explain_decision`, `recommend_for_project`, `query_free_laboratories`).
   - Confirms availability responses match exact inventory counts without hallucination.
+  - Confirms "Which lab is free?" queries calculate seat availability accurately and return structured lab cards.
 - `ConflictPanel.test.tsx`:
   - Verifies conflict case switching, live allocation mode, and What-If simulator tab rendering.
 
-### 2.3 Playwright E2E Suite (`e2e/hero-workflow.spec.ts`)
+### 2.3 Live Seat Capacity & Occupancy Tests
+- Verifies total seat capacity aggregation across all 12 facilities in `LaboratoryExplorerPage.tsx`.
+- Verifies dynamic calculation of `occupiedSeats` and `freeSeats = capacity - occupiedSeats`.
+- Verifies status badge tiers:
+  - $\ge 50\%$ free: High Availability (Emerald)
+  - $15\% - 49\%$ free: Moderate (Amber)
+  - $1\% - 14\%$ free: Near Capacity (Orange)
+  - $0$ free: Full (Rose)
+
+### 2.4 Supabase & Realtime Synchronization Testing
+- **Connection Diagnostics**:
+  - `testSupabaseConnection()` verifies REST round-trip ping to the Supabase endpoint.
+- **Pre-Flight Concurrency Guard (`checkSlotAvailability`)**:
+  - Validates that concurrent booking attempts for the same instrument slot are detected and rejected before writing.
+- **Cross-Tab Realtime Broadcast**:
+  - Test procedure:
+    1. Open Tab A in Student persona, and Tab B in Faculty persona.
+    2. Submit booking request in Tab A.
+    3. Observe instant appearance of request in Tab B Faculty Portal without page reload.
+    4. Click "Approve Recommendation" in Tab B.
+    5. Observe status change to "Approved" and calendar slot populating in Tab A within $< 500\text{ms}$.
+
+### 2.5 Playwright E2E Suite (`e2e/hero-workflow.spec.ts`)
 - **Hero Demo Flow**:
   1. Student loads dashboard.
   2. Opens Project page $\rightarrow$ executes "Analyse with AI" on Drone Swarm project.
@@ -69,16 +93,19 @@ LabLink employs a multi-tiered automated testing pyramid:
 ## 3. Running Automated Test Suites
 
 ```bash
-# 1. Run all Unit & Component Tests
+# 1. Run all Vitest Unit & Component Tests
 npm test
 
 # 2. Run TypeScript strict typecheck
 npm run typecheck
 
-# 3. Run production build
+# 3. Test Supabase automated CLI seeder
+npm run seed:supabase
+
+# 4. Run production build
 npm run build
 
-# 4. Run Playwright E2E Tests (requires dev server or preview build)
+# 5. Run Playwright E2E Tests (requires dev server or preview build)
 npm run preview &
 npx playwright test
 ```

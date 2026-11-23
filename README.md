@@ -3,10 +3,11 @@
 [![TypeScript Strict](https://img.shields.io/badge/TypeScript-Strict%20Mode-blue.svg)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-purple.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)](https://tailwindcss.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20Realtime-3ecf8e.svg)](https://supabase.com/)
 [![Vitest](https://img.shields.io/badge/Vitest-23%20Passed-green.svg)](https://vitest.dev/)
 [![WCAG 2.2 AA](https://img.shields.io/badge/Accessibility-WCAG%202.2%20AA-success.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
 
-> **LabLink** breaks down institutional silos across university engineering, life science, and robotics laboratories. It empowers students to discover 120+ specialized apparatus across departments, maps project needs with semantic AI, and eliminates scheduling deadlocks using a transparent, deterministic, explainable Fair Allocation Engine.
+> **LabLink** breaks down institutional silos across university engineering, life science, and robotics laboratories. It empowers students to discover 120+ specialized apparatus across departments, maps project needs with semantic AI, tracks real-time laboratory seat capacity & occupancy, and eliminates scheduling deadlocks using a transparent, deterministic, explainable Fair Allocation Engine backed by a live **Supabase PostgreSQL + Realtime** cloud database.
 
 ---
 
@@ -21,8 +22,8 @@
 
 ### Step 1: Clone the Repository
 ```bash
-git clone <repository-url>
-cd "prompt wars"
+git clone https://github.com/Tejas-Musaddi/PromptWars-lab-assistant.git
+cd "PromptWars-lab-assistant"
 ```
 
 ---
@@ -34,7 +35,22 @@ npm install
 
 ---
 
-### Step 3: Run the Local Development Server
+### Step 3: Configure Environment Variables (Optional Supabase Backend)
+Create a `.env` file in the root directory (or copy from `.env.example`):
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+> **Note**: If Supabase credentials are not provided, LabLink automatically runs in **100% offline deterministic mode** using LocalStorage and seeded PRNG. No configuration is required to evaluate the demo!
+
+To populate your Supabase database in one command:
+```bash
+npm run seed:supabase
+```
+
+---
+
+### Step 4: Run the Local Development Server
 ```bash
 npm run dev
 ```
@@ -46,8 +62,8 @@ http://localhost:3000
 
 ---
 
-### Step 4: Run the Test Suites
-Run all 23 Vitest unit tests (engine feasibility, multi-factor scoring, tie-breaking determinism, Jain's fairness index, What-If simulation) and component tests:
+### Step 5: Run the Test Suites
+Run all 23 Vitest unit tests (engine feasibility, multi-factor scoring, tie-breaking determinism, Jain's fairness index, assistant grounding, What-If simulation) and component tests:
 ```bash
 npm test
 ```
@@ -59,7 +75,7 @@ npm run typecheck
 
 ---
 
-### Step 5: Build for Production
+### Step 6: Build for Production
 ```bash
 npm run build
 ```
@@ -95,24 +111,33 @@ The frontend web app runs **100% offline and self-contained** in the browser usi
 
 ---
 
-### Step 7: (Optional) Connect Supabase PostgreSQL Backend
-LabLink includes full support for a live Supabase PostgreSQL database with automatic offline fallback:
+### Step 7: (Optional) Connect Supabase PostgreSQL Backend & Realtime
+LabLink includes full support for a live Supabase PostgreSQL database with automatic bidirectional sync, pre-flight race condition guards, and WebSockets Realtime live updates:
 1. Follow the step-by-step setup in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
-2. Run the migration script in `supabase/migrations/20261123_init.sql`.
-3. Provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env`.
-4. The app will automatically connect and sync, or click **"Push Seed Data to Supabase"** from the Admin Portal!
+2. Run the migration script in `supabase/migrations/20261123_init.sql` in your Supabase SQL Editor.
+3. Provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your `.env`.
+4. Seed all 128 equipment units, 12 labs, 46 users, and active conflict scenarios via CLI:
+   ```bash
+   npm run seed:supabase
+   ```
+5. Realtime changes will automatically synchronize across all active browser windows and personas instantly!
 
 ---
 
 ## 🎮 How to Use & Explore the Demo
 
-- **NO Login Required**: Opens directly into an active, populated campus dashboard.
+- **NO Login Required**: Opens directly into an active, populated campus dashboard for zero-friction evaluation.
 - **Role Switcher**: Click the **"Role: [Persona]"** dropdown in the top bar to freely switch personas between:
-  - 🎓 **Student Researcher** (Aarav Sharma) — Browse equipment, create projects, request slots.
-  - 🔮 **Faculty Advisor** (Prof. Marcus Chen) — Review priority-sorted queue, inspect score rationales, approve allocations.
+  - 🎓 **Student Researcher** (Aarav Sharma) — Browse equipment, create projects, request slots, view free seats per lab.
+  - 🔮 **Faculty Advisor** (Prof. Marcus Chen) — Review priority-sorted queue, inspect score rationales, approve allocations with 1 click.
   - 🛠️ **Lab Manager** (Dr. Victor Stone) — Toggle equipment availability/condition, schedule maintenance, simulate physical QR scans.
-  - 🛡️ **Campus Administrator** (Dean Arthur Pendelton) — Tune engine weights, inspect campus-wide audit trails.
+  - 🛡️ **Campus Administrator** (Dean Arthur Pendelton) — Tune engine weights, inspect campus-wide audit trails, monitor live Supabase connectivity.
 - **Guided Demo Tour**: Click the **"Guided Tour (Hero Demo)"** button in the top navigation bar or on the dashboard hero banner for an interactive spotlight walkthrough of the hero conflict scenario.
+- **Live Seat & Capacity Table**: Navigate to **Laboratories** and toggle between **Department Cards** and **Live Seat & Capacity Table** to view real-time workstation counts, occupied seats, free seats available, and operating hours across all 12 laboratories.
+- **Grounded AI Lab Assistant**: Open **AI Assistant** (`/assistant`) to ask conversational natural language queries:
+  - *"Which lab is free?"* or *"Which labs are open right now?"* &rarr; returns real-time seat availability cards with room and capacity info.
+  - *"Which lab should I go to for my Autonomous Drone Swarm project?"* &rarr; matches your project requirements to the exact lab and displays current seat occupancy.
+  - *"Which equipment is available in the Robotics Innovation Lab?"* &rarr; live query without hallucination.
 - **Reset Demo**: Click **"Reset Demo"** in the top bar to wipe any simulated session state and restore the pristine deterministic seed dataset.
 - **Command Palette**: Press `Ctrl+K` (or `Cmd+K`) from any screen to search across equipment, laboratories, projects, and execute quick actions.
 
@@ -125,18 +150,25 @@ flowchart TD
     subgraph UI_Layer["User Experience & Design System (Tailwind + Lucide + FullCalendar)"]
         Dashboard["Landing & Impact Dashboard"]
         Discovery["Equipment Discovery & Compare Drawer"]
-        Labs["Department -> Lab Explorer"]
+        Labs["Department -> Lab Explorer + Live Seat Capacity Table"]
         Projects["Research Projects & Milestones"]
         Calendar["Smart Multi-Lab Calendar"]
         ConflictsUI["Fair Allocation & What-If Simulator"]
-        AssistantUI["Grounded AI Lab Assistant"]
+        AssistantUI["Grounded AI Lab Assistant (Real-Time Lab & Seat Vacancy)"]
         Portals["Faculty, Manager & Admin Portals"]
     end
 
-    subgraph Store_Layer["Typed Persistence & Role-Based Store (Zustand + Zod)"]
+    subgraph Store_Layer["Hybrid Persistence & Synchronization (Zustand + Zod)"]
         Store["useAppStore (Indexed Lookups & Role Guards)"]
-        Storage["StorageService (localStorage + Corrupted Data Fallback)"]
+        Storage["StorageService (LocalStorage + Corrupted Data Fallback)"]
+        SupabaseClient["SupabaseService (PostgreSQL Client + Consistency Guards)"]
+        RealtimeSub["RealtimeService (PostgreSQL WebSockets Channel)"]
         Seed["Deterministic PRNG Seed Data (128 Units, 6 Depts, 12 Labs)"]
+    end
+
+    subgraph Backend_Cloud["Cloud Database & Realtime Layer"]
+        SupabaseDB[("Supabase PostgreSQL DB (12 Relational Tables + RLS)")]
+        RealtimeBroadcaster["Supabase Realtime Engine (Broadcasts postgres_changes)"]
     end
 
     subgraph Engine_Layer["Pure TypeScript Allocation Engine (/src/engine)"]
@@ -145,17 +177,21 @@ flowchart TD
         Scoring["Step 3: Multi-Factor Weighted Scoring (0-100)"]
         Scheduler["Step 4: Interval Backtracking & Alternative Routing"]
         Explain["Step 5: Structured Plain-English Rationale & Fairness Index"]
-        Commit["Step 6: Faculty Atomic Commitment"]
+        Commit["Step 6: Faculty Atomic Commitment & Pre-Flight Recheck"]
     end
 
     subgraph AI_Layer["Offline-First Semantic Intelligence"]
         Extractor["TF-IDF & Domain Ontology Matcher"]
-        AssistantEngine["Tool Function-Calling Engine"]
+        AssistantEngine["Tool Function-Calling Engine (Live Inventory & Seat Lookups)"]
         Proxy["Optional FastAPI Gemini Proxy (.env isolated)"]
     end
 
     UI_Layer --> Store_Layer
     Store_Layer --> Engine_Layer
+    Store_Layer <--> SupabaseClient
+    SupabaseClient <--> SupabaseDB
+    RealtimeBroadcaster --> RealtimeSub
+    RealtimeSub --> Store_Layer
     UI_Layer --> AI_Layer
     AI_Layer --> Store_Layer
 ```
@@ -212,6 +248,8 @@ $$J(x) = \frac{\left(\sum_{i=1}^n x_i\right)^2}{n \cdot \sum_{i=1}^n x_i^2}$$
 ```
 ├── .github/workflows/ci.yml       # GitHub Actions CI workflow
 ├── e2e/hero-workflow.spec.ts      # Playwright E2E test suite
+├── scripts/
+│   └── seed-supabase.ts           # CLI automated seed script for Supabase DB
 ├── server/                        # Optional Python FastAPI service
 │   ├── main.py                    # OR-Tools & Gemini Proxy API
 │   └── requirements.txt
@@ -245,22 +283,32 @@ $$J(x) = \frac{\left(\sum_{i=1}^n x_i\right)^2}{n \cdot \sum_{i=1}^n x_i^2}$$
 │   │   ├── conflicts/             # Conflict resolution & What-If simulator
 │   │   ├── dashboard/             # Landing page, KPIs, utilization charts
 │   │   ├── discovery/             # Equipment cards, detail drawer, compare modal
-│   │   ├── labs/                  # Laboratory explorer & facility drill-down
+│   │   ├── labs/                  # Laboratory explorer & live seat capacity table
 │   │   ├── portals/               # Faculty, Lab Manager, Admin portals
 │   │   └── projects/              # Projects & AI requirement analysis
-│   ├── lib/                       # Utils and constants
+│   ├── lib/
+│   │   ├── supabase.ts            # Supabase JS client & connection testers
+│   │   └── utils.ts               # Classnames & date utilities
+│   ├── services/
+│   │   ├── realtimeService.ts     # Supabase Realtime WebSocket listeners
+│   │   └── supabaseService.ts     # PostgreSQL CRUD, pre-flight checks & sync
 │   ├── store/
 │   │   ├── storage.ts             # Zod validated typed storage layer
-│   │   └── useAppStore.ts         # Zustand store with RBAC guards
+│   │   └── useAppStore.ts         # Zustand store with RBAC guards & Realtime integration
 │   ├── types/index.ts             # Strict TypeScript domain types
 │   ├── App.tsx                    # Route-level code-splitting & router
 │   ├── index.css                  # Tailwind styles & WCAG motion overrides
-│   └── main.tsx                   # React root entry
+│   ├── main.tsx                   # React root entry
+│   └── vite-env.d.ts              # Vite environment typings
+├── supabase/
+│   └── migrations/
+│       └── 20261123_init.sql      # 12-table PostgreSQL schema, RLS, indexes & grants
 ├── .env.example                   # Environment variable template
 ├── .gitignore                     # Production-grade gitignore
-├── package.json                   # Dependencies & npm scripts
+├── package.json                   # Dependencies & npm scripts (including seed:supabase)
 ├── playwright.config.ts           # Playwright E2E configuration
 ├── SECURITY.md                    # Threat model & zero-secret architecture
+├── SUPABASE_SETUP.md              # Supabase PostgreSQL & Realtime setup guide
 ├── tailwind.config.js             # Design tokens & color system
 ├── TESTING.md                     # Comprehensive test matrix & instructions
 ├── tsconfig.json                  # Strict TypeScript configuration
