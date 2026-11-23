@@ -19,6 +19,7 @@ import {
 import { StorageService } from './storage';
 import { DEFAULT_ENGINE_WEIGHTS, InitialDataState } from '../data/seedData';
 import { SupabaseService } from '../services/supabaseService';
+import { RealtimeService } from '../services/realtimeService';
 
 export interface AppState {
   // Role & Demo Identity
@@ -29,6 +30,7 @@ export interface AppState {
   // Backend & Persistence State
   backendStatus: 'local' | 'connecting' | 'connected' | 'error';
   backendMessage: string;
+  realtimeStatus: 'CONNECTING' | 'SUBSCRIBED' | 'DISCONNECTED';
 
   // Domain Data
   departments: Department[];
@@ -83,6 +85,7 @@ export interface AppState {
   approveAllocation: (conflictId: string, comment?: string) => boolean;
   rejectAllocation: (conflictId: string, reason: string) => boolean;
   modifyAllocation: (conflictId: string, updatedSchedule: AllocationResult['feasibleSchedule'], comment?: string) => boolean;
+  setConflictResolution: (conflictId: string, resolution: AllocationResult) => void;
 
   // Maintenance Actions (Lab Manager / Admin guard)
   createMaintenanceRecord: (record: Omit<MaintenanceRecord, 'id'>) => boolean;
@@ -149,6 +152,114 @@ function persistLocal(state: AppState) {
   });
 }
 
+function attachRealtimeListeners(set: any, get: any) {
+  RealtimeService.subscribe({
+    onBookingChange: (eventType, booking) => {
+      set((s: AppState) => {
+        let updated = s.bookings;
+        if (eventType === 'INSERT') {
+          if (!s.bookings.some((b) => b.id === booking.id)) {
+            updated = [booking, ...s.bookings];
+          }
+        } else if (eventType === 'UPDATE') {
+          updated = s.bookings.map((b) => (b.id === booking.id ? booking : b));
+        } else if (eventType === 'DELETE') {
+          updated = s.bookings.filter((b) => b.id !== booking.id);
+        }
+        return { bookings: updated };
+      });
+      persistLocal(get());
+    },
+    onBookingRequestChange: (eventType, req) => {
+      set((s: AppState) => {
+        let updated = s.bookingRequests;
+        if (eventType === 'INSERT') {
+          if (!s.bookingRequests.some((r) => r.id === req.id)) {
+            updated = [req, ...s.bookingRequests];
+          }
+        } else if (eventType === 'UPDATE') {
+          updated = s.bookingRequests.map((r) => (r.id === req.id ? req : r));
+        } else if (eventType === 'DELETE') {
+          updated = s.bookingRequests.filter((r) => r.id !== req.id);
+        }
+        return { bookingRequests: updated };
+      });
+      persistLocal(get());
+    },
+    onEquipmentChange: (eventType, eq) => {
+      set((s: AppState) => {
+        let updated = s.equipment;
+        const newMap = { ...s.equipmentMap };
+        if (eventType === 'INSERT') {
+          if (!s.equipment.some((e) => e.id === eq.id)) {
+            updated = [eq, ...s.equipment];
+            newMap[eq.id] = eq;
+          }
+        } else if (eventType === 'UPDATE') {
+          updated = s.equipment.map((e) => (e.id === eq.id ? eq : e));
+          newMap[eq.id] = eq;
+        } else if (eventType === 'DELETE') {
+          updated = s.equipment.filter((e) => e.id !== eq.id);
+          delete newMap[eq.id];
+        }
+        return { equipment: updated, equipmentMap: newMap };
+      });
+      persistLocal(get());
+    },
+    onMaintenanceChange: (eventType, maint) => {
+      set((s: AppState) => {
+        let updated = s.maintenanceRecords;
+        if (eventType === 'INSERT') {
+          if (!s.maintenanceRecords.some((m) => m.id === maint.id)) {
+            updated = [maint, ...s.maintenanceRecords];
+          }
+        } else if (eventType === 'UPDATE') {
+          updated = s.maintenanceRecords.map((m) => (m.id === maint.id ? maint : m));
+        } else if (eventType === 'DELETE') {
+          updated = s.maintenanceRecords.filter((m) => m.id !== maint.id);
+        }
+        return { maintenanceRecords: updated };
+      });
+      persistLocal(get());
+    },
+    onConflictChange: (eventType, conflict) => {
+      set((s: AppState) => {
+        let updated = s.conflicts;
+        if (eventType === 'INSERT') {
+          if (!s.conflicts.some((c) => c.id === conflict.id)) {
+            updated = [conflict, ...s.conflicts];
+          }
+        } else if (eventType === 'UPDATE') {
+          updated = s.conflicts.map((c) => (c.id === conflict.id ? conflict : c));
+        } else if (eventType === 'DELETE') {
+          updated = s.conflicts.filter((c) => c.id !== conflict.id);
+        }
+        return { conflicts: updated };
+      });
+      persistLocal(get());
+    },
+    onNotificationChange: (eventType, notif) => {
+      set((s: AppState) => {
+        let updated = s.notifications;
+        if (eventType === 'INSERT') {
+          if (!s.notifications.some((n) => n.id === notif.id)) {
+            updated = [notif, ...s.notifications];
+          }
+        } else if (eventType === 'UPDATE') {
+          updated = s.notifications.map((n) => (n.id === notif.id ? notif : n));
+        } else if (eventType === 'DELETE') {
+          updated = s.notifications.filter((n) => n.id !== notif.id);
+        }
+        return { notifications: updated };
+      });
+      persistLocal(get());
+    },
+    onStatusChange: (status) => {
+      set({ realtimeStatus: status });
+    },
+  });
+}
+
 export const useAppStore = create<AppState>((set, get) => {
   const initial = StorageService.load();
   const lookups = buildLookups({
@@ -170,6 +281,7 @@ export const useAppStore = create<AppState>((set, get) => {
     backendMessage: SupabaseService.isAvailable()
       ? 'Connecting to Supabase PostgreSQL database...'
       : 'Running in LocalStorage mode (deterministic PRNG seed)',
+    realtimeStatus: 'DISCONNECTED',
 
     departments: initial.departments,
     laboratories: initial.laboratories,
@@ -225,6 +337,7 @@ export const useAppStore = create<AppState>((set, get) => {
           });
 
           persistLocal(get());
+          attachRealtimeListeners(set, get);
         } else {
           // If remote database exists but has no data, seed it from local seed data
           set({ backendMessage: 'Supabase connected. Database is empty, seeding initial records...' });
@@ -249,6 +362,7 @@ export const useAppStore = create<AppState>((set, get) => {
               backendStatus: 'connected',
               backendMessage: 'Connected to Supabase (Initial seed data written to cloud database)',
             });
+            attachRealtimeListeners(set, get);
           } else {
             set({
               backendStatus: 'connected',
@@ -640,11 +754,16 @@ export const useAppStore = create<AppState>((set, get) => {
 
       persistLocal(get());
 
-      // Sync committed records to Supabase
+      // Sync committed records to Supabase with revalidation guard
       const resolvedConflict = updatedConflicts.find((c) => c.id === conflictId);
       if (resolvedConflict) {
         SupabaseService.syncConflict(resolvedConflict).catch(console.error);
       }
+      SupabaseService.revalidateAndCommitAllocation(
+        conflictId,
+        conflict.resolution.feasibleSchedule,
+        comment
+      ).catch(console.error);
       newBookings.forEach((b) => SupabaseService.syncBooking(b, 'insert').catch(console.error));
       SupabaseService.syncNotification(newNotif).catch(console.error);
 
@@ -696,6 +815,20 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       get().addAuditLog('ALLOCATION_MODIFIED', 'conflict_resolution', conflictId, `Modified schedule slots: ${comment || 'Manual override'}`);
       return true;
+    },
+
+    setConflictResolution: (conflictId, resolution) => {
+      const state = get();
+      const updatedConflicts = state.conflicts.map((c) =>
+        c.id === conflictId ? { ...c, resolution, status: 'analyzed' as const } : c
+      );
+      set({ conflicts: updatedConflicts });
+      persistLocal(get());
+      const updated = updatedConflicts.find((c) => c.id === conflictId);
+      if (updated) {
+        SupabaseService.syncConflict(updated).catch(console.error);
+      }
+      get().addAuditLog('ALLOCATION_ANALYZED', 'conflict_resolution', conflictId, `Generated fair allocation with Jain index ${resolution.fairnessIndexAfter.toFixed(2)}`);
     },
 
     createMaintenanceRecord: (recData) => {

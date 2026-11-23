@@ -39,6 +39,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     openGuidedTour,
     backendStatus,
     backendMessage,
+    realtimeStatus,
   } = useAppStore();
 
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -115,7 +116,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             />
             <span>
               {backendStatus === 'connected'
-                ? 'Supabase DB'
+                ? realtimeStatus === 'SUBSCRIBED'
+                  ? 'Supabase (Realtime Live)'
+                  : 'Supabase DB'
                 : backendStatus === 'connecting'
                 ? 'Syncing Supabase...'
                 : backendStatus === 'error'

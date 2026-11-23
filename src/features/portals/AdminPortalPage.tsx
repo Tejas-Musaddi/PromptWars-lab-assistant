@@ -36,6 +36,7 @@ export const AdminPortalPage: React.FC = () => {
     setEngineWeights,
     backendStatus,
     backendMessage,
+    realtimeStatus,
     seedSupabaseFromLocal,
     syncFromSupabase,
   } = useAppStore();
@@ -354,6 +355,16 @@ export const AdminPortalPage: React.FC = () => {
                       : backendStatus === 'error'
                       ? 'Connection Error (Fallback Active)'
                       : 'LocalStorage Mode'
+                  }
+                />
+                <StatusChip
+                  status={realtimeStatus === 'SUBSCRIBED' ? 'optimal' : 'fair'}
+                  customLabel={
+                    realtimeStatus === 'SUBSCRIBED'
+                      ? 'Realtime Broadcast: Active'
+                      : realtimeStatus === 'CONNECTING'
+                      ? 'Realtime: Connecting'
+                      : 'Realtime: Standby'
                   }
                 />
               </div>

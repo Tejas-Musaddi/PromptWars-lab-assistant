@@ -38,6 +38,7 @@ export const ConflictResolutionPage: React.FC = () => {
     setEngineWeights,
     currentRole,
     approveAllocation,
+    setConflictResolution,
   } = useAppStore();
 
   const [selectedConflictId, setSelectedConflictId] = useState<string>(
@@ -107,6 +108,9 @@ export const ConflictResolutionPage: React.FC = () => {
     setTimeout(() => {
       const res = runAllocationEngine(engineContext);
       setAllocationResult(res);
+      if (activeConflict) {
+        setConflictResolution(activeConflict.id, res);
+      }
       setIsRunning(false);
     }, 400);
   };
