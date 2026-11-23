@@ -17,13 +17,18 @@ import {
   WaitlistEntry,
 } from '../types';
 import { StorageService } from './storage';
-import { DEFAULT_ENGINE_WEIGHTS } from '../data/seedData';
+import { DEFAULT_ENGINE_WEIGHTS, InitialDataState } from '../data/seedData';
+import { SupabaseService } from '../services/supabaseService';
 
 export interface AppState {
   // Role & Demo Identity
   currentRole: Role;
   currentUser: User;
   isDemoMode: boolean;
+
+  // Backend & Persistence State
+  backendStatus: 'local' | 'connecting' | 'connected' | 'error';
+  backendMessage: string;
 
   // Domain Data
   departments: Department[];
@@ -51,10 +56,13 @@ export interface AppState {
   guidedTourOpen: boolean;
   guidedTourStep: number;
 
-  // Actions
+  // System & Backend Actions
   setRole: (role: Role) => void;
   resetDemoData: () => void;
   setEngineWeights: (weights: EngineWeightConfig) => void;
+  initBackendSync: () => Promise<void>;
+  seedSupabaseFromLocal: () => Promise<{ success: boolean; message: string }>;
+  syncFromSupabase: () => Promise<{ success: boolean; message: string }>;
 
   // Project Actions
   createProject: (project: Omit<Project, 'id' | 'createdAt'>) => Project;
@@ -124,6 +132,23 @@ function selectDefaultUserForRole(role: Role, users: User[]): User {
   }
 }
 
+function persistLocal(state: AppState) {
+  StorageService.save({
+    departments: state.departments,
+    laboratories: state.laboratories,
+    equipment: state.equipment,
+    users: state.users,
+    projects: state.projects,
+    bookings: state.bookings,
+    bookingRequests: state.bookingRequests,
+    conflicts: state.conflicts,
+    maintenanceRecords: state.maintenanceRecords,
+    notifications: state.notifications,
+    auditLogs: state.auditLogs,
+    engineWeights: state.engineWeights,
+  });
+}
+
 export const useAppStore = create<AppState>((set, get) => {
   const initial = StorageService.load();
   const lookups = buildLookups({
@@ -140,6 +165,11 @@ export const useAppStore = create<AppState>((set, get) => {
     currentRole: 'student',
     currentUser: defaultUser,
     isDemoMode: true,
+
+    backendStatus: 'local',
+    backendMessage: SupabaseService.isAvailable()
+      ? 'Connecting to Supabase PostgreSQL database...'
+      : 'Running in LocalStorage mode (deterministic PRNG seed)',
 
     departments: initial.departments,
     laboratories: initial.laboratories,
@@ -159,6 +189,139 @@ export const useAppStore = create<AppState>((set, get) => {
 
     guidedTourOpen: false,
     guidedTourStep: 0,
+
+    initBackendSync: async () => {
+      if (!SupabaseService.isAvailable()) {
+        set({
+          backendStatus: 'local',
+          backendMessage: 'Supabase URL/Key not configured in env. Operating in offline LocalStorage mode.',
+        });
+        return;
+      }
+
+      set({ backendStatus: 'connecting', backendMessage: 'Connecting to Supabase...' });
+
+      try {
+        const remoteState = await SupabaseService.fetchFullState();
+
+        if (remoteState && remoteState.equipment.length > 0) {
+          const remoteLookups = buildLookups({
+            equipment: remoteState.equipment,
+            laboratories: remoteState.laboratories,
+            departments: remoteState.departments,
+            users: remoteState.users,
+            projects: remoteState.projects,
+          });
+
+          const currentRole = get().currentRole;
+          const userForRole = selectDefaultUserForRole(currentRole, remoteState.users);
+
+          set({
+            ...remoteState,
+            currentUser: userForRole,
+            ...remoteLookups,
+            backendStatus: 'connected',
+            backendMessage: `Connected to Supabase PostgreSQL (${remoteState.equipment.length} equipment, ${remoteState.laboratories.length} labs)`,
+          });
+
+          persistLocal(get());
+        } else {
+          // If remote database exists but has no data, seed it from local seed data
+          set({ backendMessage: 'Supabase connected. Database is empty, seeding initial records...' });
+          const currentState: InitialDataState = {
+            departments: get().departments,
+            laboratories: get().laboratories,
+            equipment: get().equipment,
+            users: get().users,
+            projects: get().projects,
+            bookings: get().bookings,
+            bookingRequests: get().bookingRequests,
+            conflicts: get().conflicts,
+            maintenanceRecords: get().maintenanceRecords,
+            notifications: get().notifications,
+            auditLogs: get().auditLogs,
+            engineWeights: get().engineWeights,
+          };
+
+          const seedResult = await SupabaseService.seedSupabase(currentState);
+          if (seedResult.success) {
+            set({
+              backendStatus: 'connected',
+              backendMessage: 'Connected to Supabase (Initial seed data written to cloud database)',
+            });
+          } else {
+            set({
+              backendStatus: 'connected',
+              backendMessage: `Connected to Supabase, but seeding returned: ${seedResult.message}`,
+            });
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('initBackendSync failed:', err);
+        set({
+          backendStatus: 'error',
+          backendMessage: `Failed to sync with Supabase: ${msg}. Fallback to LocalStorage active.`,
+        });
+      }
+    },
+
+    seedSupabaseFromLocal: async () => {
+      const state = get();
+      const payload: InitialDataState = {
+        departments: state.departments,
+        laboratories: state.laboratories,
+        equipment: state.equipment,
+        users: state.users,
+        projects: state.projects,
+        bookings: state.bookings,
+        bookingRequests: state.bookingRequests,
+        conflicts: state.conflicts,
+        maintenanceRecords: state.maintenanceRecords,
+        notifications: state.notifications,
+        auditLogs: state.auditLogs,
+        engineWeights: state.engineWeights,
+      };
+
+      set({ backendStatus: 'connecting', backendMessage: 'Writing records to Supabase...' });
+      const res = await SupabaseService.seedSupabase(payload);
+      if (res.success) {
+        set({ backendStatus: 'connected', backendMessage: res.message });
+      } else {
+        set({ backendStatus: 'error', backendMessage: res.message });
+      }
+      return res;
+    },
+
+    syncFromSupabase: async () => {
+      set({ backendStatus: 'connecting', backendMessage: 'Pulling fresh records from Supabase...' });
+      const remoteState = await SupabaseService.fetchFullState();
+      if (remoteState && remoteState.equipment.length > 0) {
+        const remoteLookups = buildLookups({
+          equipment: remoteState.equipment,
+          laboratories: remoteState.laboratories,
+          departments: remoteState.departments,
+          users: remoteState.users,
+          projects: remoteState.projects,
+        });
+
+        const currentRole = get().currentRole;
+        const userForRole = selectDefaultUserForRole(currentRole, remoteState.users);
+
+        set({
+          ...remoteState,
+          currentUser: userForRole,
+          ...remoteLookups,
+          backendStatus: 'connected',
+          backendMessage: `Successfully synchronized from Supabase (${remoteState.equipment.length} equipment, ${remoteState.bookings.length} bookings)`,
+        });
+
+        persistLocal(get());
+        return { success: true, message: 'Successfully synchronized from Supabase cloud database.' };
+      }
+      set({ backendStatus: 'error', backendMessage: 'Failed to retrieve records from Supabase or tables are empty.' });
+      return { success: false, message: 'Could not fetch data from Supabase. Ensure tables are created and seeded.' };
+    },
 
     setRole: (role: Role) => {
       const state = get();
@@ -185,25 +348,17 @@ export const useAppStore = create<AppState>((set, get) => {
         guidedTourOpen: false,
         guidedTourStep: 0,
       });
+
+      // Background re-seed Supabase if connected
+      if (SupabaseService.isAvailable()) {
+        SupabaseService.seedSupabase(fresh).catch(console.error);
+      }
     },
 
     setEngineWeights: (weights: EngineWeightConfig) => {
       set({ engineWeights: weights });
-      const state = get();
-      StorageService.save({
-        departments: state.departments,
-        laboratories: state.laboratories,
-        equipment: state.equipment,
-        users: state.users,
-        projects: state.projects,
-        bookings: state.bookings,
-        bookingRequests: state.bookingRequests,
-        conflicts: state.conflicts,
-        maintenanceRecords: state.maintenanceRecords,
-        notifications: state.notifications,
-        auditLogs: state.auditLogs,
-        engineWeights: weights,
-      });
+      persistLocal(get());
+      SupabaseService.syncEngineWeights(weights).catch(console.error);
     },
 
     createProject: (projData) => {
@@ -219,6 +374,8 @@ export const useAppStore = create<AppState>((set, get) => {
         projects: updatedProjects,
         projectMap: { ...state.projectMap, [newId]: newProj },
       });
+      persistLocal(get());
+      SupabaseService.syncProject(newProj, 'insert').catch(console.error);
       get().addAuditLog('PROJECT_CREATED', 'project', newId, `Created project "${newProj.title}"`);
       return newProj;
     },
@@ -232,15 +389,22 @@ export const useAppStore = create<AppState>((set, get) => {
         projects: updated,
         projectMap: { ...state.projectMap, [id]: updatedObj },
       });
+      persistLocal(get());
+      SupabaseService.syncProject(updatedObj, 'update').catch(console.error);
       get().addAuditLog('PROJECT_UPDATED', 'project', id, `Updated project "${updatedObj.title}"`);
     },
 
     deleteProject: (id) => {
       const state = get();
+      const target = state.projects.find((p) => p.id === id);
       const updated = state.projects.filter((p) => p.id !== id);
       const newMap = { ...state.projectMap };
       delete newMap[id];
       set({ projects: updated, projectMap: newMap });
+      persistLocal(get());
+      if (target) {
+        SupabaseService.syncProject(target, 'delete').catch(console.error);
+      }
       get().addAuditLog('PROJECT_DELETED', 'project', id, `Deleted project id ${id}`);
     },
 
@@ -260,6 +424,8 @@ export const useAppStore = create<AppState>((set, get) => {
         equipment: updatedList,
         equipmentMap: { ...state.equipmentMap, [newId]: newEq },
       });
+      persistLocal(get());
+      SupabaseService.syncEquipment(newEq, 'insert').catch(console.error);
       get().addAuditLog('EQUIPMENT_CREATED', 'equipment', newId, `Added equipment unit "${newEq.name}"`);
       return true;
     },
@@ -277,6 +443,8 @@ export const useAppStore = create<AppState>((set, get) => {
         equipment: updated,
         equipmentMap: { ...state.equipmentMap, [id]: target },
       });
+      persistLocal(get());
+      SupabaseService.syncEquipment(target, 'update').catch(console.error);
       get().addAuditLog('EQUIPMENT_UPDATED', 'equipment', id, `Updated equipment ${target.name} (${target.code})`);
       return true;
     },
@@ -287,10 +455,15 @@ export const useAppStore = create<AppState>((set, get) => {
         console.warn('Unauthorized: Only Admins can delete equipment.');
         return false;
       }
+      const target = state.equipment.find((e) => e.id === id);
       const updated = state.equipment.filter((e) => e.id !== id);
       const newMap = { ...state.equipmentMap };
       delete newMap[id];
       set({ equipment: updated, equipmentMap: newMap });
+      persistLocal(get());
+      if (target) {
+        SupabaseService.syncEquipment(target, 'delete').catch(console.error);
+      }
       get().addAuditLog('EQUIPMENT_DELETED', 'equipment', id, `Deleted equipment ${id}`);
       return true;
     },
@@ -306,6 +479,8 @@ export const useAppStore = create<AppState>((set, get) => {
       };
       const updatedRequests = [newReq, ...state.bookingRequests];
       set({ bookingRequests: updatedRequests });
+      persistLocal(get());
+      SupabaseService.syncBookingRequest(newReq).catch(console.error);
       get().addAuditLog('BOOKING_REQUEST_CREATED', 'booking', newId, `Requested slot for ${reqData.equipmentId}`);
       return newReq;
     },
@@ -327,6 +502,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
       let updatedWaitlist = state.waitlist;
       let promotedNotif: Notification | null = null;
+      let promotedBooking: Booking | null = null;
 
       if (matchingWaitlist.length > 0) {
         const topCandidate = matchingWaitlist[0];
@@ -336,7 +512,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
         // Create new confirmed booking from waitlist promotion
         const newBookingId = `book-promoted-${Date.now()}`;
-        const promotedBooking: Booking = {
+        promotedBooking = {
           id: newBookingId,
           requestId: topCandidate.bookingRequestId,
           projectId: 'proj-1',
@@ -370,6 +546,17 @@ export const useAppStore = create<AppState>((set, get) => {
           : state.notifications,
       });
 
+      persistLocal(get());
+
+      // Sync cancellation to Supabase
+      SupabaseService.syncBooking({ ...target, status: 'cancelled' }, 'update').catch(console.error);
+      if (promotedBooking) {
+        SupabaseService.syncBooking(promotedBooking, 'insert').catch(console.error);
+      }
+      if (promotedNotif) {
+        SupabaseService.syncNotification(promotedNotif).catch(console.error);
+      }
+
       get().addAuditLog('BOOKING_CANCELLED', 'booking', bookingId, `Cancelled booking ${bookingId}`);
       return true;
     },
@@ -379,7 +566,12 @@ export const useAppStore = create<AppState>((set, get) => {
       const updated = state.bookings.map((b) =>
         b.id === bookingId ? { ...b, startTime: newStart, endTime: newEnd } : b
       );
+      const target = updated.find((b) => b.id === bookingId);
       set({ bookings: updated });
+      persistLocal(get());
+      if (target) {
+        SupabaseService.syncBooking(target, 'update').catch(console.error);
+      }
       get().addAuditLog('BOOKING_RESCHEDULED', 'booking', bookingId, `Shifted to ${newStart} - ${newEnd}`);
       return true;
     },
@@ -446,6 +638,16 @@ export const useAppStore = create<AppState>((set, get) => {
         notifications: [newNotif, ...state.notifications],
       });
 
+      persistLocal(get());
+
+      // Sync committed records to Supabase
+      const resolvedConflict = updatedConflicts.find((c) => c.id === conflictId);
+      if (resolvedConflict) {
+        SupabaseService.syncConflict(resolvedConflict).catch(console.error);
+      }
+      newBookings.forEach((b) => SupabaseService.syncBooking(b, 'insert').catch(console.error));
+      SupabaseService.syncNotification(newNotif).catch(console.error);
+
       get().addAuditLog(
         'ALLOCATION_APPROVED',
         'conflict_resolution',
@@ -462,6 +664,11 @@ export const useAppStore = create<AppState>((set, get) => {
         c.id === conflictId ? { ...c, status: 'detected' as const } : c
       );
       set({ conflicts: updatedConflicts });
+      persistLocal(get());
+      const updated = updatedConflicts.find((c) => c.id === conflictId);
+      if (updated) {
+        SupabaseService.syncConflict(updated).catch(console.error);
+      }
       get().addAuditLog('ALLOCATION_REJECTED', 'conflict_resolution', conflictId, `Rejected: ${reason}`);
       return true;
     },
@@ -482,6 +689,11 @@ export const useAppStore = create<AppState>((set, get) => {
         return c;
       });
       set({ conflicts: updatedConflicts });
+      persistLocal(get());
+      const updated = updatedConflicts.find((c) => c.id === conflictId);
+      if (updated) {
+        SupabaseService.syncConflict(updated).catch(console.error);
+      }
       get().addAuditLog('ALLOCATION_MODIFIED', 'conflict_resolution', conflictId, `Modified schedule slots: ${comment || 'Manual override'}`);
       return true;
     },
@@ -494,6 +706,8 @@ export const useAppStore = create<AppState>((set, get) => {
         id: `maint-${Date.now()}`,
       };
       set({ maintenanceRecords: [newRec, ...state.maintenanceRecords] });
+      persistLocal(get());
+      SupabaseService.syncMaintenanceRecord(newRec).catch(console.error);
       get().addAuditLog('MAINTENANCE_SCHEDULED', 'equipment', recData.equipmentId, `Scheduled maintenance: ${recData.title}`);
       return true;
     },
@@ -504,22 +718,34 @@ export const useAppStore = create<AppState>((set, get) => {
       const updated = state.maintenanceRecords.map((m) =>
         m.id === recordId ? { ...m, status } : m
       );
+      const target = updated.find((m) => m.id === recordId);
       set({ maintenanceRecords: updated });
+      persistLocal(get());
+      if (target) {
+        SupabaseService.syncMaintenanceRecord(target).catch(console.error);
+      }
       return true;
     },
 
     markNotificationRead: (id) => {
-      set((state) => ({
-        notifications: state.notifications.map((n) =>
-          n.id === id ? { ...n, read: true } : n
-        ),
-      }));
+      const state = get();
+      const updated = state.notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      );
+      const target = updated.find((n) => n.id === id);
+      set({ notifications: updated });
+      persistLocal(get());
+      if (target) {
+        SupabaseService.syncNotification(target).catch(console.error);
+      }
     },
 
     markAllNotificationsRead: () => {
-      set((state) => ({
-        notifications: state.notifications.map((n) => ({ ...n, read: true })),
-      }));
+      set((state) => {
+        const updated = state.notifications.map((n) => ({ ...n, read: true }));
+        return { notifications: updated };
+      });
+      persistLocal(get());
     },
 
     addAuditLog: (action, entityType, entityId, details) => {
@@ -536,6 +762,8 @@ export const useAppStore = create<AppState>((set, get) => {
         details,
       };
       set({ auditLogs: [newEntry, ...state.auditLogs] });
+      persistLocal(get());
+      SupabaseService.syncAuditLog(newEntry).catch(console.error);
     },
 
     openGuidedTour: () => set({ guidedTourOpen: true, guidedTourStep: 0 }),

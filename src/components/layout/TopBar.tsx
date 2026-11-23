@@ -12,11 +12,12 @@ import {
   ChevronDown,
   Menu,
   Check,
+  Database,
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { ROLE_LABELS } from '../../lib/constants';
-import { formatDateTime } from '../../lib/utils';
+import { formatDateTime, cn } from '../../lib/utils';
 
 interface TopBarProps {
   onToggleMobileNav: () => void;
@@ -36,6 +37,8 @@ export const TopBar: React.FC<TopBarProps> = ({
     markNotificationRead,
     markAllNotificationsRead,
     openGuidedTour,
+    backendStatus,
+    backendMessage,
   } = useAppStore();
 
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -81,6 +84,44 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-800">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span>DEMO MODE</span>
+          </div>
+
+          {/* Database Backend Status Badge */}
+          <div
+            className={cn(
+              "hidden md:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium cursor-help transition-colors",
+              backendStatus === 'connected'
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : backendStatus === 'connecting'
+                ? "bg-blue-50 border-blue-200 text-blue-800"
+                : backendStatus === 'error'
+                ? "bg-rose-50 border-rose-200 text-rose-800"
+                : "bg-slate-100 border-slate-200 text-slate-700"
+            )}
+            title={backendMessage}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span
+              className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                backendStatus === 'connected'
+                  ? "bg-emerald-500 animate-pulse"
+                  : backendStatus === 'connecting'
+                  ? "bg-blue-500 animate-ping"
+                  : backendStatus === 'error'
+                  ? "bg-rose-500"
+                  : "bg-slate-400"
+              )}
+            />
+            <span>
+              {backendStatus === 'connected'
+                ? 'Supabase DB'
+                : backendStatus === 'connecting'
+                ? 'Syncing Supabase...'
+                : backendStatus === 'error'
+                ? 'DB Offline (Fallback)'
+                : 'LocalStorage DB'}
+            </span>
           </div>
 
           {/* Guided Tour Launcher */}

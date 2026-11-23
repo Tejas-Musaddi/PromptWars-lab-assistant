@@ -95,6 +95,15 @@ The frontend web app runs **100% offline and self-contained** in the browser usi
 
 ---
 
+### Step 7: (Optional) Connect Supabase PostgreSQL Backend
+LabLink includes full support for a live Supabase PostgreSQL database with automatic offline fallback:
+1. Follow the step-by-step setup in [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
+2. Run the migration script in `supabase/migrations/20261123_init.sql`.
+3. Provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env`.
+4. The app will automatically connect and sync, or click **"Push Seed Data to Supabase"** from the Admin Portal!
+
+---
+
 ## 🎮 How to Use & Explore the Demo
 
 - **NO Login Required**: Opens directly into an active, populated campus dashboard.

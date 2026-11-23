@@ -13,8 +13,15 @@ import {
   RotateCcw,
   CheckCircle2,
   ShieldAlert,
+  Database,
+  CloudUpload,
+  CloudDownload,
+  RefreshCw,
+  Server,
+  AlertCircle,
 } from 'lucide-react';
 import { formatDateTime } from '../../lib/utils';
+import { testSupabaseConnection } from '../../lib/supabase';
 
 export const AdminPortalPage: React.FC = () => {
   const {
@@ -27,10 +34,16 @@ export const AdminPortalPage: React.FC = () => {
     auditLogs,
     engineWeights,
     setEngineWeights,
+    backendStatus,
+    backendMessage,
+    seedSupabaseFromLocal,
+    syncFromSupabase,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState('weights');
   const [weights, setWeights] = useState({ ...engineWeights });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const totalWeight = Math.round(
     (weights.deadlineUrgency +
@@ -43,6 +56,7 @@ export const AdminPortalPage: React.FC = () => {
 
   const tabs = [
     { id: 'weights', label: 'Engine Weights Configuration', icon: <Sliders className="w-4 h-4" /> },
+    { id: 'database', label: 'Database & Cloud Backend', icon: <Database className="w-4 h-4" /> },
     { id: 'users', label: 'Users & Roles Directory', icon: <Users className="w-4 h-4" /> },
     { id: 'departments', label: 'Departments & Facilities', icon: <Building2 className="w-4 h-4" /> },
     { id: 'audit', label: 'System Audit Trail', icon: <FileText className="w-4 h-4" /> },
@@ -55,6 +69,57 @@ export const AdminPortalPage: React.FC = () => {
     }
     setEngineWeights(weights);
     alert('Campus Allocation Engine weights updated successfully!');
+  };
+
+  const handlePushToSupabase = async () => {
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      const res = await seedSupabaseFromLocal();
+      setSyncFeedback({
+        type: res.success ? 'success' : 'error',
+        message: res.message,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSyncFeedback({ type: 'error', message: msg });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePullFromSupabase = async () => {
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      const res = await syncFromSupabase();
+      setSyncFeedback({
+        type: res.success ? 'success' : 'error',
+        message: res.message,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSyncFeedback({ type: 'error', message: msg });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      const res = await testSupabaseConnection();
+      setSyncFeedback({
+        type: res.ok ? 'success' : 'error',
+        message: res.message,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSyncFeedback({ type: 'error', message: msg });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
@@ -256,7 +321,179 @@ export const AdminPortalPage: React.FC = () => {
         </Card>
       )}
 
-      {/* TAB 2: Users & Roles Directory */}
+      {/* TAB 2: Database & Supabase Backend */}
+      {activeTab === 'database' && (
+        <div className="space-y-6">
+          <Card className="p-6 shadow-card space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-surface-border pb-4">
+              <div>
+                <CardTitle className="text-base font-bold text-navy-900 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-primary-600" />
+                  <span>Cloud Database & Synchronization</span>
+                </CardTitle>
+                <p className="text-xs text-slate-500 mt-1">
+                  Manage the PostgreSQL backend layer powered by Supabase with automatic offline LocalStorage fallback.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusChip
+                  status={
+                    backendStatus === 'connected'
+                      ? 'optimal'
+                      : backendStatus === 'connecting'
+                      ? 'fair'
+                      : backendStatus === 'error'
+                      ? 'out_of_service'
+                      : 'good'
+                  }
+                  customLabel={
+                    backendStatus === 'connected'
+                      ? 'Supabase Live'
+                      : backendStatus === 'connecting'
+                      ? 'Connecting...'
+                      : backendStatus === 'error'
+                      ? 'Connection Error (Fallback Active)'
+                      : 'LocalStorage Mode'
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Live Status Details */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-600">
+                <span className="font-semibold text-navy-900">Backend Status Message:</span>
+                <span className="font-mono text-[11px] text-slate-500">{backendStatus}</span>
+              </div>
+              <p className="text-xs text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200 font-mono">
+                {backendMessage}
+              </p>
+            </div>
+
+            {/* Sync Feedback Alert */}
+            {syncFeedback && (
+              <div
+                className={`p-3 rounded-lg border text-xs flex items-start gap-2.5 ${
+                  syncFeedback.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+              >
+                {syncFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                )}
+                <div className="space-y-0.5">
+                  <span className="font-bold">
+                    {syncFeedback.type === 'success' ? 'Success' : 'Error'}
+                  </span>
+                  <p>{syncFeedback.message}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Database Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-center">
+                <span className="text-[11px] text-slate-500 font-medium">Equipment Units</span>
+                <p className="text-xl font-bold text-navy-900 mt-1">{equipment.length}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-center">
+                <span className="text-[11px] text-slate-500 font-medium">Laboratories</span>
+                <p className="text-xl font-bold text-navy-900 mt-1">{laboratories.length}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-center">
+                <span className="text-[11px] text-slate-500 font-medium">Departments</span>
+                <p className="text-xl font-bold text-navy-900 mt-1">{departments.length}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-center">
+                <span className="text-[11px] text-slate-500 font-medium">Users Seeded</span>
+                <p className="text-xl font-bold text-navy-900 mt-1">{users.length}</p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-surface-border">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestConnection}
+                disabled={isSyncing}
+                leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />}
+              >
+                Test Supabase Connection
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handlePushToSupabase}
+                disabled={isSyncing}
+                leftIcon={<CloudUpload className="w-3.5 h-3.5" />}
+              >
+                Push Seed Data to Supabase
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePullFromSupabase}
+                disabled={isSyncing}
+                leftIcon={<CloudDownload className="w-3.5 h-3.5" />}
+              >
+                Pull Records from Supabase
+              </Button>
+            </div>
+          </Card>
+
+          {/* Setup Instructions Card */}
+          <Card className="p-6 shadow-card space-y-4">
+            <CardTitle className="text-sm font-bold text-navy-900 flex items-center gap-2">
+              <Server className="w-4 h-4 text-primary-600" />
+              <span>How to connect your own Supabase project</span>
+            </CardTitle>
+            <div className="text-xs text-slate-600 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-bold text-primary-800">
+                  1
+                </span>
+                <p>
+                  Create a free project at <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-primary-600 underline font-medium">supabase.com</a>.
+                </p>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-bold text-primary-800">
+                  2
+                </span>
+                <p>
+                  In the Supabase SQL Editor, run the migration script located at <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[11px] font-mono text-navy-900">supabase/migrations/20261123_init.sql</code>. It creates all 12 tables and RLS public policies.
+                </p>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-bold text-primary-800">
+                  3
+                </span>
+                <p>
+                  Copy your Project URL and Anon Public Key from <em>Project Settings → API</em> into <code className="bg-slate-100 px-1.5 py-0.5 rounded text-[11px] font-mono text-navy-900">.env</code>:
+                </p>
+              </div>
+              <pre className="bg-slate-900 text-slate-100 p-3 rounded-lg text-[11px] font-mono overflow-x-auto">
+{`VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key`}
+              </pre>
+              <div className="flex items-start gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-bold text-primary-800">
+                  4
+                </span>
+                <p>
+                  Click <strong>&quot;Push Seed Data to Supabase&quot;</strong> above to populate all 120+ equipment units, 12 labs, and demo conflict scenarios into your cloud database.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 3: Users & Roles Directory */}
       {activeTab === 'users' && (
         <Card className="overflow-hidden shadow-card">
           <CardHeader className="bg-slate-50/70 p-4 border-b border-surface-border">

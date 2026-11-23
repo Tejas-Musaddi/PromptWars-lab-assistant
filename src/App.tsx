@@ -1,8 +1,9 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { GuidedTourModal } from './components/common/GuidedTourModal';
 import { Loader2 } from 'lucide-react';
+import { useAppStore } from './store/useAppStore';
 
 // Route-level code-splitting & lazy-loading (Section 9.3)
 const DashboardPage = lazy(() =>
@@ -67,6 +68,12 @@ const PageFallback: React.FC = () => (
 );
 
 export const App: React.FC = () => {
+  const initBackendSync = useAppStore((s) => s.initBackendSync);
+
+  useEffect(() => {
+    initBackendSync();
+  }, [initBackendSync]);
+
   return (
     <BrowserRouter>
       {/* Global Guided Spotlight Tour Modal */}
