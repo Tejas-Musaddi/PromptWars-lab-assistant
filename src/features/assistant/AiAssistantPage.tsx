@@ -49,10 +49,11 @@ export const AiAssistantPage: React.FC = () => {
   const [equipmentToBook, setEquipmentToBook] = useState<Equipment | null>(null);
 
   const suggestedPrompts = [
+    'Which lab is free right now?',
+    'Which lab should I go to for my robotics project?',
     'Why was the DGX Station allocated to Aarav?',
     'Which GPU workstations or drone kits are available now?',
     'Recommend apparatus for training a vision-language foundation model',
-    'Show alternative hardware for high-demand AI compute',
   ];
 
   const scrollToBottom = () => {
@@ -193,6 +194,37 @@ export const AiAssistantPage: React.FC = () => {
                             className="text-[10px] h-6 px-2"
                           >
                             Book Slot
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {msg.dataCards && msg.dataCards.type === 'lab_info' && Array.isArray(msg.dataCards.payload) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    {msg.dataCards.payload.map((item: any, idx: number) => (
+                      <div key={idx} className="p-3 bg-white rounded-xl border border-surface-border shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-primary-700 bg-primary-50 px-2 py-0.5 rounded border border-primary-100">
+                            Room {item.lab.roomNumber}
+                          </span>
+                          <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                            {item.availableEquipment} Free Units
+                          </span>
+                        </div>
+                        <h5 className="font-bold text-xs text-navy-900 line-clamp-1">{item.lab.name}</h5>
+                        <p className="text-[11px] text-slate-500">{item.lab.building || 'Campus Facility'}</p>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px] text-slate-500">
+                          <span>Hours: {item.lab.operatingHours.open} - {item.lab.operatingHours.close}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate('/labs')}
+                            className="text-[10px] h-6 px-1.5 text-primary-600"
+                            rightIcon={<ArrowRight className="w-3 h-3" />}
+                          >
+                            Explore Lab
                           </Button>
                         </div>
                       </div>

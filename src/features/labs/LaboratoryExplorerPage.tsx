@@ -19,12 +19,16 @@ import {
   Mail,
   Wrench,
   Search,
+  Table,
+  LayoutGrid,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const LaboratoryExplorerPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { departments, laboratories, equipment, deptMap } = useAppStore();
+  const { departments, laboratories, equipment, deptMap, bookings } = useAppStore();
 
+  const [explorerView, setExplorerView] = useState<'cards' | 'table'>('cards');
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
   const [selectedLabId, setSelectedLabId] = useState<string | null>(
     searchParams.get('lab') || null
@@ -119,8 +123,151 @@ export const LaboratoryExplorerPage: React.FC = () => {
         </div>
       </div>
 
-      {/* VIEW 1: All Departments Overview */}
+      {/* View Switcher: Department Cards vs Live Seat Capacity Table */}
       {!selectedDeptId && !selectedLabId && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-surface-border pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Explorer View:</span>
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setExplorerView('cards')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                  explorerView === 'cards'
+                    ? 'bg-white text-navy-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-navy-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Department Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExplorerView('table')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                  explorerView === 'table'
+                    ? 'bg-white text-navy-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-navy-900'
+                }`}
+              >
+                <Table className="w-3.5 h-3.5 text-primary-600" />
+                <span>Live Seat & Capacity Table ({laboratories.length} Labs)</span>
+              </button>
+            </div>
+          </div>
+          <span className="text-[11px] text-slate-400">
+            Real-time seat occupancy computed from active reservations
+          </span>
+        </div>
+      )}
+
+      {/* VIEW 1A: Live Laboratory Seat & Capacity Table */}
+      {!selectedDeptId && !selectedLabId && explorerView === 'table' && (
+        <Card className="overflow-hidden shadow-card">
+          <CardHeader className="bg-slate-50/70 p-4 border-b border-surface-border flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm font-bold text-navy-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary-600" />
+                Campus Laboratory Seat Occupancy & Real-Time Availability
+              </CardTitle>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Live seating capacity, current active reservations, and free workstation counts across all university departments.
+              </p>
+            </div>
+          </CardHeader>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 text-[10px] uppercase text-slate-400 border-b border-surface-border">
+                <tr>
+                  <th className="p-3">Laboratory Facility</th>
+                  <th className="p-3">Department</th>
+                  <th className="p-3">Room & Building</th>
+                  <th className="p-3 text-center">Total Seats</th>
+                  <th className="p-3 text-center">Occupied Now</th>
+                  <th className="p-3 text-center">Free Seats Available</th>
+                  <th className="p-3 text-center">Equipment Free</th>
+                  <th className="p-3">Operating Hours</th>
+                  <th className="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {laboratories.map((lab) => {
+                  const dept = deptMap[lab.departmentId];
+                  const labEq = equipment.filter((e) => e.labId === lab.id);
+                  const freeEq = labEq.filter((e) => e.availability === 'available').length;
+                  
+                  // Active confirmed reservations
+                  const activeLabBookings = bookings.filter(
+                    (b) => b.labId === lab.id && b.status === 'confirmed'
+                  );
+                  const occupiedSeats = activeLabBookings.length;
+                  const freeSeats = Math.max(0, lab.capacity - occupiedSeats);
+
+                  return (
+                    <tr key={lab.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3">
+                        <div className="font-bold text-navy-900">{lab.name}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-mono text-[10px] text-slate-400">{lab.code}</span>
+                          <span className="text-[10px] text-slate-300">•</span>
+                          <span className="text-[10px] text-primary-600 font-medium">Safety Tier {lab.safetyTier}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-slate-600 font-medium">{dept?.name || 'Engineering'}</td>
+                      <td className="p-3 text-slate-600">
+                        <div>Room {lab.roomNumber}</div>
+                        <div className="text-[11px] text-slate-400">{lab.building}</div>
+                      </td>
+                      <td className="p-3 text-center font-bold text-navy-900">
+                        {lab.capacity} seats
+                      </td>
+                      <td className="p-3 text-center text-slate-600">
+                        <span className="font-semibold text-amber-700">{occupiedSeats} active</span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            freeSeats > 5
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : freeSeats > 0
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-rose-50 text-rose-800 border border-rose-200'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${freeSeats > 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {freeSeats} Free {freeSeats === 1 ? 'Seat' : 'Seats'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center font-medium text-slate-600">
+                        {freeEq} / {labEq.length}
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <div>{lab.operatingHours.open} - {lab.operatingHours.close}</div>
+                        <div className="text-[10px] text-emerald-600 font-medium">Open Mon–Fri</div>
+                      </td>
+                      <td className="p-3 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedLabId(lab.id)}
+                          className="text-[11px] h-7"
+                          rightIcon={<ChevronRight className="w-3 h-3" />}
+                        >
+                          Explore Lab
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* VIEW 1B: All Departments Overview (Cards) */}
+      {!selectedDeptId && !selectedLabId && explorerView === 'cards' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {departments.map((dept) => {
             const deptLabs = laboratories.filter((l) => l.departmentId === dept.id);
